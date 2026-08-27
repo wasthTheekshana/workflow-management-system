@@ -303,6 +303,37 @@ async function resubmitInstance(tenantId, userId, instanceId) {
   return newInstance;
 }
 
+async function reassignInstance(tenantId, adminId, instanceId, targetUserId, comment) {
+  const { instance } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'in_progress') {
+    throw new AppError(400, 'Only in-progress instances can be reassigned');
+  }
+
+  assertUuid(targetUserId, 'userId');
+  const targetUser = await db('users').where({ tenant_id: tenantId, id: targetUserId }).first();
+  if (!targetUser) {
+    throw new AppError(400, 'userId does not belong to this tenant');
+  }
+
+  const [updated] = await db('workflow_instances')
+    .where({ tenant_id: tenantId, id: instanceId })
+    .update({ claimed_by: targetUserId })
+    .returning('*');
+
+  await db('stage_actions').insert({
+    tenant_id: tenantId,
+    workflow_instance_id: instanceId,
+    action_type: 'reassign',
+    from_stage_order: instance.current_stage_order,
+    to_stage_order: instance.current_stage_order,
+    actor_id: adminId,
+    comment: comment || null,
+  });
+
+  return updated;
+}
+
 module.exports = {
   getInstanceDetail,
   startInstance,
@@ -313,4 +344,5 @@ module.exports = {
   sendBackInstance,
   rejectInstance,
   resubmitInstance,
+  reassignInstance,
 };

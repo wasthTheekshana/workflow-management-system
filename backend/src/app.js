@@ -6,6 +6,7 @@ const { validateEnv } = require('./config/env');
 const healthRouter = require('./routes/health');
 const authRouter = require('./routes/auth');
 const templateFilesRouter = require('./routes/admin/templateFiles');
+const workflowTemplatesRouter = require('./routes/admin/workflowTemplates');
 const errorHandler = require('./middleware/errorHandler');
 
 const config = validateEnv();
@@ -31,6 +32,7 @@ app.use(baselineLimiter);
 app.use('/health', healthRouter);
 app.use('/auth', authRouter);
 app.use('/admin/template-files', templateFilesRouter);
+app.use('/admin/workflow-templates', workflowTemplatesRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

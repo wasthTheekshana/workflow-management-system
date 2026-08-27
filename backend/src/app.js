@@ -4,6 +4,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const { validateEnv } = require('./config/env');
 const healthRouter = require('./routes/health');
+const authRouter = require('./routes/auth');
 const errorHandler = require('./middleware/errorHandler');
 
 const config = validateEnv();
@@ -27,6 +28,7 @@ const baselineLimiter = rateLimit({
 app.use(baselineLimiter);
 
 app.use('/health', healthRouter);
+app.use('/auth', authRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

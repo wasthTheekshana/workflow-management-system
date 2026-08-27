@@ -28,6 +28,7 @@ describe('validateEnv', () => {
   it('returns a fully-populated config object for valid input', () => {
     const config = validateEnv(validBase);
     expect(config.jwtSecret).toBe(validBase.JWT_SECRET);
+    expect(config.storageDir).toBe('./storage');
     expect(config.db).toEqual({
       host: 'localhost',
       port: 5432,

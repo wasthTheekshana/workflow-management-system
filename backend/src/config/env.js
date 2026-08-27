@@ -28,6 +28,7 @@ function validateEnv(env = process.env) {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    storageDir: env.STORAGE_DIR || './storage',
     db: {
       host: env.DB_HOST,
       port: parseInt(env.DB_PORT, 10),

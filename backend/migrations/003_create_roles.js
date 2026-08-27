@@ -7,6 +7,8 @@ exports.up = function up(knex) {
 
     table.unique(['tenant_id', 'name']);
     table.index('tenant_id');
+    // Lets child tables enforce a composite (tenant_id, role_id) FK.
+    table.unique(['tenant_id', 'id']);
   });
 };
 

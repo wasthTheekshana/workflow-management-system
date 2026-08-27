@@ -2,11 +2,7 @@ exports.up = function up(knex) {
   return knex.schema.createTable('notifications', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('tenant_id').notNullable().references('id').inTable('tenants').onDelete('CASCADE');
-    table
-      .uuid('workflow_instance_id')
-      .references('id')
-      .inTable('workflow_instances')
-      .onDelete('CASCADE');
+    table.uuid('workflow_instance_id');
     table.string('recipient_email').notNullable();
     table.string('subject').notNullable();
     table.text('body').notNullable();
@@ -17,6 +13,12 @@ exports.up = function up(knex) {
 
     table.index('tenant_id');
     table.index('status');
+
+    table
+      .foreign(['tenant_id', 'workflow_instance_id'])
+      .references(['tenant_id', 'id'])
+      .inTable('workflow_instances')
+      .onDelete('CASCADE');
   });
 };
 

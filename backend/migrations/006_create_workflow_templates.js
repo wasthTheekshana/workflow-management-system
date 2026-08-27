@@ -6,28 +6,32 @@ exports.up = async function up(knex) {
     table.timestamps(true, true);
 
     table.index('tenant_id');
+    table.unique(['tenant_id', 'id']);
   });
 
   await knex.schema.createTable('workflow_stages', (table) => {
     table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
     table.uuid('tenant_id').notNullable().references('id').inTable('tenants').onDelete('CASCADE');
-    table
-      .uuid('workflow_template_id')
-      .notNullable()
-      .references('id')
-      .inTable('workflow_templates')
-      .onDelete('CASCADE');
+    table.uuid('workflow_template_id').notNullable();
     table.integer('stage_order').notNullable();
     table.string('name').notNullable();
     table.enu('assignee_type', ['user', 'role'], { useNative: true, enumName: 'assignee_type' }).notNullable();
-    table.uuid('assignee_user_id').references('id').inTable('users');
-    table.uuid('assignee_role_id').references('id').inTable('roles');
+    table.uuid('assignee_user_id');
+    table.uuid('assignee_role_id');
     table.jsonb('allowed_actions').notNullable().defaultTo(JSON.stringify(['forward', 'send_back', 'reject']));
     table.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
 
     table.unique(['workflow_template_id', 'stage_order']);
     table.index('tenant_id');
     table.index(['workflow_template_id', 'stage_order']);
+
+    table
+      .foreign(['tenant_id', 'workflow_template_id'])
+      .references(['tenant_id', 'id'])
+      .inTable('workflow_templates')
+      .onDelete('CASCADE');
+    table.foreign(['tenant_id', 'assignee_user_id']).references(['tenant_id', 'id']).inTable('users');
+    table.foreign(['tenant_id', 'assignee_role_id']).references(['tenant_id', 'id']).inTable('roles');
   });
 };
 

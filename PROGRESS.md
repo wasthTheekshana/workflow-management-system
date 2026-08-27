@@ -79,6 +79,33 @@ Plans: `docs/superpowers/plans/`.
     walkthrough created a template file, uploaded two versions, built a 3-stage workflow
     (mixing user- and role-assignable stages), and linked a document type to both —
     entirely through the API, no direct database access.
-- **Next:** write and execute the Phase 2 plan (workflow engine core — start instance,
-  claim flow, save-version cycle, forward/send-back/hard-reject transitions, admin
-  reassignment, clone-after-reject).
+- **Wrote and executed the Phase 2 plan**
+  (`docs/superpowers/plans/2026-08-27-phase2-workflow-engine-core.md`): the workflow
+  engine core — `startInstance`, claim flow for role-assigned stages, the
+  download/upload save-version cycle (validated against the document type's own
+  `allowed_extensions`/`max_upload_size_bytes`), forward (auto-completes at the last
+  stage), send-back (always exactly one stage back, per the spec's open decision),
+  hard reject, clone-after-reject resubmission, and admin reassignment for stuck
+  instances.
+  - Centralized every transition's authorization in one pure function, `canAct(stage,
+    instance, userId)` (named to match the spec's own "canAct() in the workflow
+    engine" reference), instead of duplicating the check per action: if the instance
+    is claimed, only the claimant may act — which is also what makes admin
+    reassignment work uniformly across both role- and user-assigned stages without
+    a separate code path.
+  - Admin reassignment is scoped to the single stuck instance (`claimed_by`) —
+    deliberately never rewrites the workflow template's stage definition, so fixing
+    one stuck document can't silently change how every other instance of that
+    template behaves.
+  - Hit a real supertest quirk while testing the binary download endpoint: superagent
+    doesn't buffer unrecognized content-types (like a .docx mimetype) into a Buffer by
+    default, so `response.body` came back as `{}` instead of file bytes. Fixed by
+    parsing the response with an explicit binary parser in the tests — not an app bug,
+    but worth remembering for any future binary-download test.
+  - **Verified exit criteria:** full test suite → 66/66 passing; a live curl
+    walkthrough drove one instance through start → download → re-upload → forward →
+    send-back → forward → forward → hard reject → resubmit, with correct state
+    (`current_stage_order`, `status`, `claimed_by`) confirmed at every step.
+- **Next:** write and execute the Phase 3 plan (notifications — queue table, background
+  worker with poll-and-send retry, per-event email templates for assigned/forwarded/
+  sent-back/rejected/completed/reassigned).

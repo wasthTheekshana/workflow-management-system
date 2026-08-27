@@ -5,6 +5,7 @@ const {
   createWorkflowTemplate,
   listWorkflowTemplates,
   getWorkflowTemplate,
+  addWorkflowStage,
 } = require('../../services/workflowTemplateService');
 
 const router = express.Router();
@@ -33,6 +34,15 @@ router.get('/:id', async (req, res, next) => {
   try {
     const workflowTemplate = await getWorkflowTemplate(req.user.tenantId, req.params.id);
     res.status(200).json(workflowTemplate);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/stages', async (req, res, next) => {
+  try {
+    const stage = await addWorkflowStage(req.user.tenantId, req.params.id, req.body);
+    res.status(201).json(stage);
   } catch (err) {
     next(err);
   }

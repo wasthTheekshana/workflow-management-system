@@ -197,6 +197,42 @@ async function forwardInstance(tenantId, userId, instanceId, comment) {
   return updated;
 }
 
+async function sendBackInstance(tenantId, userId, instanceId, comment) {
+  const { instance, stage } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'in_progress') {
+    throw new AppError(400, 'Only in-progress instances can be sent back');
+  }
+  if (!stage.allowed_actions.includes('send_back')) {
+    throw new AppError(400, 'The current stage does not allow sending back');
+  }
+  if (!canAct(stage, instance, userId)) {
+    throw new AppError(403, 'You are not authorized to act on this instance right now');
+  }
+  if (instance.current_stage_order <= 1) {
+    throw new AppError(400, 'Cannot send back from the first stage');
+  }
+
+  const targetStageOrder = instance.current_stage_order - 1;
+
+  const [updated] = await db('workflow_instances')
+    .where({ tenant_id: tenantId, id: instanceId })
+    .update({ current_stage_order: targetStageOrder, claimed_by: null })
+    .returning('*');
+
+  await db('stage_actions').insert({
+    tenant_id: tenantId,
+    workflow_instance_id: instanceId,
+    action_type: 'send_back',
+    from_stage_order: instance.current_stage_order,
+    to_stage_order: targetStageOrder,
+    actor_id: userId,
+    comment: comment || null,
+  });
+
+  return updated;
+}
+
 module.exports = {
   getInstanceDetail,
   startInstance,
@@ -204,4 +240,5 @@ module.exports = {
   addInstanceVersion,
   getCurrentFilePath,
   forwardInstance,
+  sendBackInstance,
 };

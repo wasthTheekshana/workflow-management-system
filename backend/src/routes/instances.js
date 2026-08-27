@@ -8,6 +8,7 @@ const {
   addInstanceVersion,
   getCurrentFilePath,
   forwardInstance,
+  sendBackInstance,
 } = require('../services/workflowInstanceService');
 
 const router = express.Router();
@@ -65,6 +66,15 @@ router.get('/:id/current-file', async (req, res, next) => {
 router.post('/:id/forward', async (req, res, next) => {
   try {
     const instance = await forwardInstance(req.user.tenantId, req.user.userId, req.params.id, req.body.comment);
+    res.status(200).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/send-back', async (req, res, next) => {
+  try {
+    const instance = await sendBackInstance(req.user.tenantId, req.user.userId, req.params.id, req.body.comment);
     res.status(200).json(instance);
   } catch (err) {
     next(err);

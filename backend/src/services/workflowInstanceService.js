@@ -60,4 +60,41 @@ async function startInstance(tenantId, userId, documentTypeId) {
   return instance;
 }
 
-module.exports = { getInstanceDetail, startInstance };
+async function claimInstance(tenantId, userId, instanceId) {
+  const { instance, stage } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'in_progress') {
+    throw new AppError(400, 'Only in-progress instances can be claimed');
+  }
+  if (stage.assignee_type !== 'role') {
+    throw new AppError(400, 'The current stage is not role-assigned; claiming does not apply');
+  }
+  if (instance.claimed_by) {
+    throw new AppError(400, 'This instance has already been claimed');
+  }
+
+  const hasRole = await db('user_roles')
+    .where({ tenant_id: tenantId, user_id: userId, role_id: stage.assignee_role_id })
+    .first();
+  if (!hasRole) {
+    throw new AppError(403, 'You do not hold the role assigned to this stage');
+  }
+
+  const [updated] = await db('workflow_instances')
+    .where({ tenant_id: tenantId, id: instanceId })
+    .update({ claimed_by: userId })
+    .returning('*');
+
+  await db('stage_actions').insert({
+    tenant_id: tenantId,
+    workflow_instance_id: instanceId,
+    action_type: 'claim',
+    from_stage_order: instance.current_stage_order,
+    to_stage_order: instance.current_stage_order,
+    actor_id: userId,
+  });
+
+  return updated;
+}
+
+module.exports = { getInstanceDetail, startInstance, claimInstance };

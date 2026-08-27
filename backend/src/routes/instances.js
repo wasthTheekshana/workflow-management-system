@@ -1,6 +1,6 @@
 const express = require('express');
 const { authenticate } = require('../middleware/auth');
-const { startInstance, getInstanceDetail } = require('../services/workflowInstanceService');
+const { startInstance, getInstanceDetail, claimInstance } = require('../services/workflowInstanceService');
 
 const router = express.Router();
 
@@ -19,6 +19,15 @@ router.get('/:id', async (req, res, next) => {
   try {
     const { instance, stage } = await getInstanceDetail(req.user.tenantId, req.params.id);
     res.status(200).json({ ...instance, currentStage: stage });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/claim', async (req, res, next) => {
+  try {
+    const instance = await claimInstance(req.user.tenantId, req.user.userId, req.params.id);
+    res.status(200).json(instance);
   } catch (err) {
     next(err);
   }

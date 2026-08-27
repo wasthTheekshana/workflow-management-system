@@ -233,6 +233,76 @@ async function sendBackInstance(tenantId, userId, instanceId, comment) {
   return updated;
 }
 
+async function rejectInstance(tenantId, userId, instanceId, comment) {
+  const { instance, stage } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'in_progress') {
+    throw new AppError(400, 'Only in-progress instances can be rejected');
+  }
+  if (!stage.allowed_actions.includes('reject')) {
+    throw new AppError(400, 'The current stage does not allow rejecting');
+  }
+  if (!canAct(stage, instance, userId)) {
+    throw new AppError(403, 'You are not authorized to act on this instance right now');
+  }
+
+  const [updated] = await db('workflow_instances')
+    .where({ tenant_id: tenantId, id: instanceId })
+    .update({ status: 'rejected' })
+    .returning('*');
+
+  await db('stage_actions').insert({
+    tenant_id: tenantId,
+    workflow_instance_id: instanceId,
+    action_type: 'reject',
+    from_stage_order: instance.current_stage_order,
+    to_stage_order: null,
+    actor_id: userId,
+    comment: comment || null,
+  });
+
+  return updated;
+}
+
+async function resubmitInstance(tenantId, userId, instanceId) {
+  const { instance } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'rejected') {
+    throw new AppError(400, 'Only rejected instances can be resubmitted');
+  }
+  if (instance.created_by !== userId) {
+    throw new AppError(403, 'Only the original submitter can resubmit this instance');
+  }
+
+  const [newInstance] = await db('workflow_instances')
+    .insert({
+      tenant_id: tenantId,
+      document_type_id: instance.document_type_id,
+      template_file_version_id: instance.template_file_version_id,
+      current_stage_order: 1,
+      status: 'in_progress',
+      created_by: userId,
+    })
+    .returning('*');
+
+  const lastVersion = await db('instance_versions')
+    .where({ tenant_id: tenantId, workflow_instance_id: instance.id })
+    .orderBy('version_number', 'desc')
+    .first();
+
+  if (lastVersion) {
+    await db('instance_versions').insert({
+      tenant_id: tenantId,
+      workflow_instance_id: newInstance.id,
+      version_number: 1,
+      file_path: lastVersion.file_path,
+      uploaded_by: lastVersion.uploaded_by,
+    });
+  }
+
+  return newInstance;
+}
+
 module.exports = {
   getInstanceDetail,
   startInstance,
@@ -241,4 +311,6 @@ module.exports = {
   getCurrentFilePath,
   forwardInstance,
   sendBackInstance,
+  rejectInstance,
+  resubmitInstance,
 };

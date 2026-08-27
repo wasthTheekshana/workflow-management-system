@@ -9,6 +9,8 @@ const {
   getCurrentFilePath,
   forwardInstance,
   sendBackInstance,
+  rejectInstance,
+  resubmitInstance,
 } = require('../services/workflowInstanceService');
 
 const router = express.Router();
@@ -76,6 +78,24 @@ router.post('/:id/send-back', async (req, res, next) => {
   try {
     const instance = await sendBackInstance(req.user.tenantId, req.user.userId, req.params.id, req.body.comment);
     res.status(200).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/reject', async (req, res, next) => {
+  try {
+    const instance = await rejectInstance(req.user.tenantId, req.user.userId, req.params.id, req.body.comment);
+    res.status(200).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/resubmit', async (req, res, next) => {
+  try {
+    const instance = await resubmitInstance(req.user.tenantId, req.user.userId, req.params.id);
+    res.status(201).json(instance);
   } catch (err) {
     next(err);
   }

@@ -59,5 +59,26 @@ Plans: `docs/superpowers/plans/`.
     seed → `npm run dev` boots cleanly; `GET /health` → 200; `POST /auth/login` with
     seeded credentials → 200 + JWT; wrong password → generic 401 `{"error":"Invalid
     email or password"}` (no detail leaked); full test suite → 19/19 passing.
-- **Next:** write and execute the Phase 1 plan (template & workflow configuration APIs —
-  admin upload/versioning for templates, workflow builder, document type CRUD).
+- **Wrote and executed the Phase 1 plan**
+  (`docs/superpowers/plans/2026-08-27-phase1-template-workflow-config.md`): admin-only
+  APIs (`authenticate` + new `requireAdmin` middleware) for template files (create,
+  list, get, upload/version with extension allow-list + size cap + ZIP magic-byte
+  signature check, local disk storage), workflow templates (create, list, get) with a
+  stage builder (`POST /admin/workflow-templates/:id/stages`, user- or role-assigned,
+  ordered, cross-tenant-checked), and full document type CRUD linking a template file
+  to a workflow template.
+  - Switched `multer` from the plan's originally-specified 1.x to 2.x mid-task: `npm
+    install` surfaced a deprecation warning that 1.x has known vulnerabilities patched
+    in 2.x. Since the spec requires security best practices as a hard constraint, not
+    just what the plan happened to name, upgraded before writing any code against it.
+  - Every admin service function validates cross-tenant references itself (a
+    `templateFileId`, `workflowTemplateId`, `assigneeUserId`, or `assigneeRoleId` must
+    belong to the caller's own tenant) — this is the application-layer half of the
+    tenant-isolation principle; Phase 0's composite FKs are the database-layer half.
+  - **Verified exit criteria:** full test suite → 44/44 passing; a live end-to-end curl
+    walkthrough created a template file, uploaded two versions, built a 3-stage workflow
+    (mixing user- and role-assignable stages), and linked a document type to both —
+    entirely through the API, no direct database access.
+- **Next:** write and execute the Phase 2 plan (workflow engine core — start instance,
+  claim flow, save-version cycle, forward/send-back/hard-reject transitions, admin
+  reassignment, clone-after-reject).

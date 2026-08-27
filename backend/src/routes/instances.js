@@ -1,6 +1,13 @@
 const express = require('express');
 const { authenticate } = require('../middleware/auth');
-const { startInstance, getInstanceDetail, claimInstance } = require('../services/workflowInstanceService');
+const { upload } = require('../config/multerUpload');
+const {
+  startInstance,
+  getInstanceDetail,
+  claimInstance,
+  addInstanceVersion,
+  getCurrentFilePath,
+} = require('../services/workflowInstanceService');
 
 const router = express.Router();
 
@@ -28,6 +35,27 @@ router.post('/:id/claim', async (req, res, next) => {
   try {
     const instance = await claimInstance(req.user.tenantId, req.user.userId, req.params.id);
     res.status(200).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/versions', upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'file is required' });
+    }
+    const version = await addInstanceVersion(req.user.tenantId, req.user.userId, req.params.id, req.file);
+    res.status(201).json(version);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/current-file', async (req, res, next) => {
+  try {
+    const absolutePath = await getCurrentFilePath(req.user.tenantId, req.params.id);
+    res.download(absolutePath);
   } catch (err) {
     next(err);
   }

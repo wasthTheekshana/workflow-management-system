@@ -16,4 +16,4 @@ async function saveUploadedFile(tenantId, buffer, extension) {
   return path.join(tenantId, fileName);
 }
 
-module.exports = { saveUploadedFile };
+module.exports = { saveUploadedFile, STORAGE_ROOT };

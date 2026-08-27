@@ -30,5 +30,34 @@ Plans: `docs/superpowers/plans/`.
     spec's own "production Postgres connections require TLS by default" principle.
     Fixed to `ssl: true` (verification stays on); a self-signed cert should go through
     the trust store, not a disabled check.
-- **Next:** execute Phase 0 task-by-task, verify its exit criteria, report back, then
-  write the Phase 1 plan (template & workflow configuration APIs).
+- **Executed Phase 0 task-by-task** (git-committed one task at a time in `backend/`):
+  repo scaffolding, Docker Compose (Postgres 16 + API), all 10 schema migrations,
+  fail-fast env validation, JWT sign/verify pinned to HS256, AppError + central error
+  handler + auth middleware, Express app (helmet/CORS/rate-limit) + `/health`,
+  `POST /auth/login`, and the dev seed script + server entrypoint.
+  - Chose to execute directly in this session rather than the full subagent-driven
+    orchestration (worktrees + a reviewer subagent per task + ledger). Why: solo local
+    build, no shared branch, and the plan already carried literal code for every step —
+    the multi-agent review pipeline is built for larger/parallel efforts and would have
+    added ceremony without adding rigor here.
+  - **Automated security review of each commit caught and fixed 2 real issues:**
+    1. Docker hardening: API container ran as root, had no `.dockerignore` (risk of
+       `.env`/`.git` leaking into the image), Postgres/API ports bound to all
+       interfaces, and Compose fell back to a weak hardcoded DB password if `.env`
+       was missing. Fixed: non-root `node` user in the container, `.dockerignore`
+       added, ports bound to `127.0.0.1` only, `DB_PASSWORD` now required (fails
+       loudly, no weak fallback).
+    2. Tenant isolation gap in the schema itself: child tables used single-column
+       foreign keys (e.g. `user_roles.user_id -> users.id`), which let a row
+       reference a parent belonging to a *different* tenant — the database had no way
+       to reject that, only application code did. Fixed by adding `unique(tenant_id, id)`
+       to every referenced table and converting every cross-table FK to a composite
+       `(tenant_id, id)` foreign key, so the database itself now enforces the spec's
+       tenant-isolation principle (§6), not just the JWT-scoped query pattern in app code.
+       Rebuilt both databases from a clean volume and reran all 10 migrations clean.
+  - **Verified exit criteria from a clean volume:** `docker compose down -v` → migrate →
+    seed → `npm run dev` boots cleanly; `GET /health` → 200; `POST /auth/login` with
+    seeded credentials → 200 + JWT; wrong password → generic 401 `{"error":"Invalid
+    email or password"}` (no detail leaked); full test suite → 19/19 passing.
+- **Next:** write and execute the Phase 1 plan (template & workflow configuration APIs —
+  admin upload/versioning for templates, workflow builder, document type CRUD).

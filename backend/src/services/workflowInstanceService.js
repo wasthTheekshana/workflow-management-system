@@ -154,4 +154,54 @@ async function getCurrentFilePath(tenantId, instanceId) {
   return path.join(STORAGE_ROOT, relativePath);
 }
 
-module.exports = { getInstanceDetail, startInstance, claimInstance, addInstanceVersion, getCurrentFilePath };
+async function forwardInstance(tenantId, userId, instanceId, comment) {
+  const { instance, documentType, stage } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'in_progress') {
+    throw new AppError(400, 'Only in-progress instances can be forwarded');
+  }
+  if (!stage.allowed_actions.includes('forward')) {
+    throw new AppError(400, 'The current stage does not allow forwarding');
+  }
+  if (!canAct(stage, instance, userId)) {
+    throw new AppError(403, 'You are not authorized to act on this instance right now');
+  }
+
+  const nextStage = await db('workflow_stages')
+    .where({
+      tenant_id: tenantId,
+      workflow_template_id: documentType.workflow_template_id,
+      stage_order: instance.current_stage_order + 1,
+    })
+    .first();
+
+  const updates = nextStage
+    ? { current_stage_order: nextStage.stage_order, claimed_by: null }
+    : { status: 'completed' };
+
+  const [updated] = await db('workflow_instances')
+    .where({ tenant_id: tenantId, id: instanceId })
+    .update(updates)
+    .returning('*');
+
+  await db('stage_actions').insert({
+    tenant_id: tenantId,
+    workflow_instance_id: instanceId,
+    action_type: 'forward',
+    from_stage_order: instance.current_stage_order,
+    to_stage_order: nextStage ? nextStage.stage_order : instance.current_stage_order,
+    actor_id: userId,
+    comment: comment || null,
+  });
+
+  return updated;
+}
+
+module.exports = {
+  getInstanceDetail,
+  startInstance,
+  claimInstance,
+  addInstanceVersion,
+  getCurrentFilePath,
+  forwardInstance,
+};

@@ -69,4 +69,21 @@ async function getInstanceHistory(tenantId, instanceId) {
   };
 }
 
-module.exports = { listMyTasks, getInstanceHistory };
+async function listInstancesForAdmin(tenantId, { status, documentTypeId } = {}) {
+  let query = db('workflow_instances')
+    .join('document_types', 'document_types.id', 'workflow_instances.document_type_id')
+    .where({ 'workflow_instances.tenant_id': tenantId })
+    .select('workflow_instances.*', 'document_types.name as document_type_name')
+    .orderBy('workflow_instances.created_at', 'desc');
+
+  if (status) {
+    query = query.where('workflow_instances.status', status);
+  }
+  if (documentTypeId) {
+    query = query.where('workflow_instances.document_type_id', documentTypeId);
+  }
+
+  return query;
+}
+
+module.exports = { listMyTasks, getInstanceHistory, listInstancesForAdmin };

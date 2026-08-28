@@ -10,6 +10,8 @@ const workflowTemplatesRouter = require('./routes/admin/workflowTemplates');
 const documentTypesRouter = require('./routes/admin/documentTypes');
 const instancesRouter = require('./routes/instances');
 const adminInstancesRouter = require('./routes/admin/instances');
+const adminUsersRouter = require('./routes/admin/users');
+const adminRolesRouter = require('./routes/admin/roles');
 const errorHandler = require('./middleware/errorHandler');
 
 const config = validateEnv();
@@ -39,6 +41,8 @@ app.use('/admin/workflow-templates', workflowTemplatesRouter);
 app.use('/admin/document-types', documentTypesRouter);
 app.use('/instances', instancesRouter);
 app.use('/admin/instances', adminInstancesRouter);
+app.use('/admin/users', adminUsersRouter);
+app.use('/admin/roles', adminRolesRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

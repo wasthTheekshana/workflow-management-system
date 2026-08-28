@@ -12,6 +12,7 @@ const instancesRouter = require('./routes/instances');
 const adminInstancesRouter = require('./routes/admin/instances');
 const adminUsersRouter = require('./routes/admin/users');
 const adminRolesRouter = require('./routes/admin/roles');
+const documentTypesPublicRouter = require('./routes/documentTypes');
 const errorHandler = require('./middleware/errorHandler');
 
 const config = validateEnv();
@@ -40,6 +41,7 @@ app.use('/admin/template-files', templateFilesRouter);
 app.use('/admin/workflow-templates', workflowTemplatesRouter);
 app.use('/admin/document-types', documentTypesRouter);
 app.use('/instances', instancesRouter);
+app.use('/document-types', documentTypesPublicRouter);
 app.use('/admin/instances', adminInstancesRouter);
 app.use('/admin/users', adminUsersRouter);
 app.use('/admin/roles', adminRolesRouter);

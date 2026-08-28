@@ -5,6 +5,7 @@ const { assertUuid } = require('../utils/validation');
 const { canAct } = require('../utils/workflowAuthorization');
 const { assertAllowedUpload } = require('../utils/fileValidation');
 const { saveUploadedFile, STORAGE_ROOT } = require('./fileStorageService');
+const { notifyStage, notifyUser } = require('./notificationService');
 
 async function getInstanceDetail(tenantId, instanceId) {
   assertUuid(instanceId, 'instanceId');
@@ -60,6 +61,11 @@ async function startInstance(tenantId, userId, documentTypeId) {
       created_by: userId,
     })
     .returning('*');
+
+  await notifyStage(tenantId, instance.id, 'assigned', firstStage, {
+    documentTypeName: documentType.name,
+    stageName: firstStage.name,
+  });
 
   return instance;
 }
@@ -194,11 +200,22 @@ async function forwardInstance(tenantId, userId, instanceId, comment) {
     comment: comment || null,
   });
 
+  if (nextStage) {
+    await notifyStage(tenantId, instanceId, 'forwarded', nextStage, {
+      documentTypeName: documentType.name,
+      stageName: nextStage.name,
+    });
+  } else {
+    await notifyUser(tenantId, instanceId, 'completed', instance.created_by, {
+      documentTypeName: documentType.name,
+    });
+  }
+
   return updated;
 }
 
 async function sendBackInstance(tenantId, userId, instanceId, comment) {
-  const { instance, stage } = await getInstanceDetail(tenantId, instanceId);
+  const { instance, documentType, stage } = await getInstanceDetail(tenantId, instanceId);
 
   if (instance.status !== 'in_progress') {
     throw new AppError(400, 'Only in-progress instances can be sent back');
@@ -230,11 +247,19 @@ async function sendBackInstance(tenantId, userId, instanceId, comment) {
     comment: comment || null,
   });
 
+  const targetStage = await db('workflow_stages')
+    .where({ tenant_id: tenantId, workflow_template_id: documentType.workflow_template_id, stage_order: targetStageOrder })
+    .first();
+  await notifyStage(tenantId, instanceId, 'sent_back', targetStage, {
+    documentTypeName: documentType.name,
+    stageName: targetStage.name,
+  });
+
   return updated;
 }
 
 async function rejectInstance(tenantId, userId, instanceId, comment) {
-  const { instance, stage } = await getInstanceDetail(tenantId, instanceId);
+  const { instance, documentType, stage } = await getInstanceDetail(tenantId, instanceId);
 
   if (instance.status !== 'in_progress') {
     throw new AppError(400, 'Only in-progress instances can be rejected');
@@ -259,6 +284,11 @@ async function rejectInstance(tenantId, userId, instanceId, comment) {
     to_stage_order: null,
     actor_id: userId,
     comment: comment || null,
+  });
+
+  await notifyUser(tenantId, instanceId, 'rejected', instance.created_by, {
+    documentTypeName: documentType.name,
+    comment,
   });
 
   return updated;
@@ -304,7 +334,7 @@ async function resubmitInstance(tenantId, userId, instanceId) {
 }
 
 async function reassignInstance(tenantId, adminId, instanceId, targetUserId, comment) {
-  const { instance } = await getInstanceDetail(tenantId, instanceId);
+  const { instance, documentType, stage } = await getInstanceDetail(tenantId, instanceId);
 
   if (instance.status !== 'in_progress') {
     throw new AppError(400, 'Only in-progress instances can be reassigned');
@@ -329,6 +359,11 @@ async function reassignInstance(tenantId, adminId, instanceId, targetUserId, com
     to_stage_order: instance.current_stage_order,
     actor_id: adminId,
     comment: comment || null,
+  });
+
+  await notifyUser(tenantId, instanceId, 'reassigned', targetUserId, {
+    documentTypeName: documentType.name,
+    stageName: stage.name,
   });
 
   return updated;

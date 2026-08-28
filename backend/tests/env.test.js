@@ -33,6 +33,7 @@ describe('validateEnv', () => {
       host: 'localhost',
       port: 587,
       secure: false,
+      requireTLS: true,
       user: '',
       password: '',
       from: 'no-reply@example.com',

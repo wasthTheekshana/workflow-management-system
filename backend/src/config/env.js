@@ -33,6 +33,10 @@ function validateEnv(env = process.env) {
       host: env.SMTP_HOST || 'localhost',
       port: parseInt(env.SMTP_PORT || '587', 10),
       secure: env.SMTP_SECURE === 'true',
+      // STARTTLS is required by default so a network attacker can't strip
+      // encryption on the plaintext-then-upgrade path; only disable this for
+      // a local dev relay (e.g. Mailhog) that doesn't speak STARTTLS at all.
+      requireTLS: env.SMTP_REQUIRE_TLS !== 'false',
       user: env.SMTP_USER || '',
       password: env.SMTP_PASSWORD || '',
       from: env.SMTP_FROM || 'no-reply@example.com',

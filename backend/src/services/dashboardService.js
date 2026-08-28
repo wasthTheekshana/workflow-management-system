@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { canAct } = require('../utils/workflowAuthorization');
+const { getInstanceDetail } = require('./workflowInstanceService');
 
 async function listMyTasks(tenantId, userId) {
   const inProgress = await db('workflow_instances')
@@ -48,4 +49,24 @@ async function listMyTasks(tenantId, userId) {
   return { assignedToMe, waitingOnOthers, completed };
 }
 
-module.exports = { listMyTasks };
+async function getInstanceHistory(tenantId, instanceId) {
+  const { instance, documentType, stage } = await getInstanceDetail(tenantId, instanceId);
+
+  const versions = await db('instance_versions')
+    .where({ tenant_id: tenantId, workflow_instance_id: instanceId })
+    .orderBy('version_number', 'asc');
+
+  const auditLog = await db('stage_actions')
+    .where({ tenant_id: tenantId, workflow_instance_id: instanceId })
+    .orderBy('created_at', 'asc');
+
+  return {
+    instance,
+    documentType: { id: documentType.id, name: documentType.name },
+    currentStage: stage,
+    versions,
+    auditLog,
+  };
+}
+
+module.exports = { listMyTasks, getInstanceHistory };

@@ -12,7 +12,7 @@ const {
   rejectInstance,
   resubmitInstance,
 } = require('../services/workflowInstanceService');
-const { listMyTasks } = require('../services/dashboardService');
+const { listMyTasks, getInstanceHistory } = require('../services/dashboardService');
 
 const router = express.Router();
 
@@ -106,6 +106,15 @@ router.post('/:id/resubmit', async (req, res, next) => {
   try {
     const instance = await resubmitInstance(req.user.tenantId, req.user.userId, req.params.id);
     res.status(201).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/history', async (req, res, next) => {
+  try {
+    const history = await getInstanceHistory(req.user.tenantId, req.params.id);
+    res.status(200).json(history);
   } catch (err) {
     next(err);
   }

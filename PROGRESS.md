@@ -143,6 +143,32 @@ Plans: `docs/superpowers/plans/`.
     with no real SMTP server reachable, the running worker's poll cycle left every
     row `status: 'pending'` while `attempts` climbed and `last_error` captured the
     real `ECONNREFUSED` — proving an outage delays delivery rather than dropping it.
-- **Next:** write and execute the Phase 4 plan (dashboards & audit trail — "my tasks"
-  endpoint, instance detail with full version history and stage_actions audit log,
-  admin overview filterable by status/document type).
+## 2026-08-28
+
+- **Wrote and executed the Phase 4 plan**
+  (`docs/superpowers/plans/2026-08-28-phase4-dashboards-audit-trail.md`): a new
+  `dashboardService.js` (read-only, separate from the transactional engine) adding
+  `GET /instances/my-tasks`, `GET /instances/:id/history`, and
+  `GET /admin/instances?status=&documentTypeId=`.
+  - The spec names the three "my tasks" buckets but doesn't define their exact
+    membership — documented the design call in the plan: *assigned to me* reuses
+    Phase 2's own `canAct` (plus "eligible to claim" for an unclaimed role stage),
+    *waiting on others* is the caller's own in-progress submissions sitting at
+    someone else's desk, *completed* is the caller's own submissions that reached a
+    terminal state (`completed` or `rejected`). Reusing `canAct` here means the
+    dashboard can never claim someone is "assigned" to something they couldn't
+    actually act on — one source of truth for authorization, not two.
+  - `GET /instances/my-tasks` had to be registered before the existing
+    `GET /instances/:id` route — Express matches routes in declaration order, so
+    `:id` would otherwise have swallowed `my-tasks` as a param value. Caught by the
+    route ordering itself failing loudly in the first test run.
+  - **Verified exit criteria:** full test suite → 87/87 passing; a live walkthrough
+    confirmed `/instances/:id/history` reconstructs the complete version list and
+    audit log for an instance forwarded then sent back, `/instances/my-tasks`
+    correctly bucketed both this phase's fresh instance and leftover instances from
+    every earlier phase's own walkthrough still sitting in the dev database, and
+    `/admin/instances?status=in_progress` filtered correctly.
+- **Next:** write and execute the Phase 5 plan (hardening & QA — confirm upload
+  validation against wrong types/oversized/mismatched-signature files, tenant-isolation
+  testing across every endpoint, a load test for index effectiveness, and a full
+  pass against the spec's §6 security checklist against the running system).

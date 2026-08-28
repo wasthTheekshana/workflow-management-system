@@ -12,10 +12,20 @@ const {
   rejectInstance,
   resubmitInstance,
 } = require('../services/workflowInstanceService');
+const { listMyTasks } = require('../services/dashboardService');
 
 const router = express.Router();
 
 router.use(authenticate);
+
+router.get('/my-tasks', async (req, res, next) => {
+  try {
+    const tasks = await listMyTasks(req.user.tenantId, req.user.userId);
+    res.status(200).json(tasks);
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.post('/', async (req, res, next) => {
   try {

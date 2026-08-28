@@ -106,6 +106,43 @@ Plans: `docs/superpowers/plans/`.
     walkthrough drove one instance through start → download → re-upload → forward →
     send-back → forward → forward → hard reject → resubmit, with correct state
     (`current_stage_order`, `status`, `claimed_by`) confirmed at every step.
-- **Next:** write and execute the Phase 3 plan (notifications — queue table, background
-  worker with poll-and-send retry, per-event email templates for assigned/forwarded/
-  sent-back/rejected/completed/reassigned).
+- **Resumed after a context compaction** and confirmed the in-flight tenant-isolation
+  fix from the end of Phase 0 (converting every cross-table FK in migrations 002-010 to
+  a composite `(tenant_id, id)` foreign key) was already committed and applied cleanly
+  to both databases — verified via `knex migrate:list` before continuing, per the
+  memory-verification discipline (don't trust a stale record of "what's in the repo").
+- **Wrote and executed the Phase 3 plan**
+  (`docs/superpowers/plans/2026-08-27-phase3-notifications.md`): SMTP config +
+  Nodemailer transporter, a `notificationService` (recipient resolution — a single
+  user or every role-holder — plus per-event templates for assigned/forwarded/
+  sent_back/rejected/completed/reassigned), wired that service into every Phase 2
+  transition as a side effect (never sent inline), and a background worker
+  (`processPendingNotifications`) that polls `WHERE status = 'pending'`, attempts
+  delivery through an injectable `sendMail`, and caps retries at `MAX_ATTEMPTS = 5`
+  before marking a row `'failed'`.
+  - **Security review caught a real gap:** the initial Nodemailer transporter didn't
+    force STARTTLS or pin a minimum TLS version, leaving it open to a downgrade
+    attack that strips encryption on the plaintext-then-upgrade path. Fixed by
+    requiring STARTTLS by default (`SMTP_REQUIRE_TLS`, opt-out only for a
+    non-TLS-capable local dev relay) and pinning `tls.minVersion: 'TLSv1.2'`; also
+    trimmed worker error logging to `err.message` only, not the full error object,
+    as defense-in-depth against a verbose SMTP response echoing sensitive detail
+    into logs.
+  - Nodemailer itself was bumped from the plan's originally-specified 6.x to 9.x
+    mid-task — `npm audit` flagged eight CVEs (SMTP command injection, CRLF header
+    injection, TLS certificate validation bypass) patched only in the major version.
+    Same pattern as multer in Phase 1: verify the actual dependency, not just what
+    the plan named.
+  - A schema consequence of Phase 0's tenant-isolation fix showed up immediately:
+    `notifications.workflow_instance_id` is now a composite FK, so a notification
+    test using a fabricated instance ID correctly failed instead of silently
+    inserting — fixed by using `null` (the column is nullable) for tests that only
+    exercise recipient/template logic, not a real instance lifecycle.
+  - **Verified exit criteria:** full test suite → 77/77 passing; a live walkthrough
+    (start, forward, reject) confirmed one `notifications` row per transition, and
+    with no real SMTP server reachable, the running worker's poll cycle left every
+    row `status: 'pending'` while `attempts` climbed and `last_error` captured the
+    real `ECONNREFUSED` — proving an outage delays delivery rather than dropping it.
+- **Next:** write and execute the Phase 4 plan (dashboards & audit trail — "my tasks"
+  endpoint, instance detail with full version history and stage_actions audit log,
+  admin overview filterable by status/document type).

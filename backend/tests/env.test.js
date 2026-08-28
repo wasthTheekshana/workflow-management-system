@@ -29,6 +29,14 @@ describe('validateEnv', () => {
     const config = validateEnv(validBase);
     expect(config.jwtSecret).toBe(validBase.JWT_SECRET);
     expect(config.storageDir).toBe('./storage');
+    expect(config.smtp).toEqual({
+      host: 'localhost',
+      port: 587,
+      secure: false,
+      user: '',
+      password: '',
+      from: 'no-reply@example.com',
+    });
     expect(config.db).toEqual({
       host: 'localhost',
       port: 5432,

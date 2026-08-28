@@ -29,6 +29,14 @@ function validateEnv(env = process.env) {
       .map((origin) => origin.trim())
       .filter(Boolean),
     storageDir: env.STORAGE_DIR || './storage',
+    smtp: {
+      host: env.SMTP_HOST || 'localhost',
+      port: parseInt(env.SMTP_PORT || '587', 10),
+      secure: env.SMTP_SECURE === 'true',
+      user: env.SMTP_USER || '',
+      password: env.SMTP_PASSWORD || '',
+      from: env.SMTP_FROM || 'no-reply@example.com',
+    },
     db: {
       host: env.DB_HOST,
       port: parseInt(env.DB_PORT, 10),

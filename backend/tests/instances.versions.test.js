@@ -120,4 +120,25 @@ describe('instance save-version cycle', () => {
     expect(currentFile.status).toBe(200);
     expect(currentFile.body.toString()).toContain('edited-by-assignee');
   });
+
+  it('rejects an upload whose content does not match the docx signature, even with a .docx name', async () => {
+    const fakeBuffer = Buffer.from('this is plainly not an office document');
+    const response = await request(app)
+      .post(`/instances/${instanceId}/versions`)
+      .set('Authorization', `Bearer ${assigneeToken}`)
+      .attach('file', fakeBuffer, 'disguised.docx');
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects an upload exceeding the document type's configured max size", async () => {
+    const oversizedBuffer = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+      Buffer.alloc(11 * 1024 * 1024),
+    ]);
+    const response = await request(app)
+      .post(`/instances/${instanceId}/versions`)
+      .set('Authorization', `Bearer ${assigneeToken}`)
+      .attach('file', oversizedBuffer, 'huge.docx');
+    expect(response.status).toBe(400);
+  });
 });

@@ -79,6 +79,25 @@ describe('template files admin API', () => {
     expect(response.status).toBe(400);
   });
 
+  it('rejects an upload exceeding the 10MB template size cap', async () => {
+    const createResponse = await request(app)
+      .post('/admin/template-files')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Oversized Template' });
+    const templateFileId = createResponse.body.id;
+
+    const oversizedBuffer = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+      Buffer.alloc(11 * 1024 * 1024),
+    ]);
+
+    const response = await request(app)
+      .post(`/admin/template-files/${templateFileId}/versions`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', oversizedBuffer, 'huge.docx');
+    expect(response.status).toBe(400);
+  });
+
   it('returns 404 for a template file that does not belong to the caller', async () => {
     const response = await request(app)
       .get('/admin/template-files/99999999-9999-9999-9999-999999999999')

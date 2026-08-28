@@ -168,7 +168,53 @@ Plans: `docs/superpowers/plans/`.
     correctly bucketed both this phase's fresh instance and leftover instances from
     every earlier phase's own walkthrough still sitting in the dev database, and
     `/admin/instances?status=in_progress` filtered correctly.
-- **Next:** write and execute the Phase 5 plan (hardening & QA — confirm upload
-  validation against wrong types/oversized/mismatched-signature files, tenant-isolation
-  testing across every endpoint, a load test for index effectiveness, and a full
-  pass against the spec's §6 security checklist against the running system).
+- **Wrote and executed the Phase 5 plan**
+  (`docs/superpowers/plans/2026-08-28-phase5-hardening-qa.md`): the final phase, pure
+  verification against the *running* system rather than new features.
+  - **Upload validation**: closed two real gaps — oversized files and
+    signature-mismatched files (a `.docx`-named upload whose bytes aren't actually
+    a ZIP) were previously proven only at the unit level (`fileValidation.test.js`);
+    added endpoint-level tests for both, on both the template-file admin upload and
+    the instance version upload, so the whole path (multer → `assertAllowedUpload` →
+    reject) is proven live, not just the validator function in isolation.
+  - **Tenant isolation**: a single comprehensive sweep test builds two fully
+    independent tenants and drives every admin CRUD action, every instance
+    transition, and every list endpoint from tenant A against tenant B's real
+    resource IDs — 9 tests, all passing, meaning the composite-FK fix from Phase 0
+    and the tenant-scoped `WHERE` clause in every service function actually hold
+    end-to-end, not just individually per phase.
+  - **Rate limiting & injection**: proved the login limiter's 429 fires on exactly
+    the 11th attempt (not sooner, not never), and that a literal SQL-injection
+    string (`Robert'); DROP TABLE workflow_templates;--`) round-trips as inert data
+    through Knex's parameterized queries — the table survives, the string comes
+    back byte-for-byte on a subsequent list call.
+  - **Index effectiveness**: bulk-seeded 8,000 rows each into `workflow_instances`
+    and `notifications` (via a single `INSERT ... SELECT generate_series(...)`, not
+    one row at a time) with a realistic status distribution — mostly terminal
+    states so `in_progress`/`pending` are a selective minority, the shape a real
+    tenant's data would actually have — then ran `EXPLAIN` and confirmed the
+    planner chose an index scan over a sequential scan for both the tenant
+    dashboard query and the notification worker's poll query.
+  - **Verified exit criteria:** full test suite → 103/103 passing. Live checks
+    against the running system: the app refuses to boot with a short `JWT_SECRET`,
+    a tampered JWT gets a 401, helmet headers are present on a live response,
+    malformed/missing input returns a generic `{ "error": ... }` with no stack
+    trace. Ran a full realistic UAT-style walkthrough (HR Letter, 3 stages,
+    including a send-back and a revision) end to end via the API — since there's
+    no frontend in this build's scope, this scripted run stands in for the
+    plan's "internal UAT with one real DOK workflow" until a UI exists for a human
+    to click through by hand — and `GET /instances/:id/history` reconstructed the
+    complete, correctly-ordered story: 2 versions, 4 audit-log entries with the
+    right actors and comments.
+
+## Build status: the source plan's Phase 1 (all 6 phases) is complete
+
+Every phase in `Workflow_Engine_Implementation_Plan.docx` — Foundations, Template &
+Workflow Configuration, Workflow Engine Core, Notifications, Dashboards & Audit
+Trail, and Hardening & QA — has been built, tested, and verified against the running
+system, backend-only per the scope decision made at the start of this build. 103
+tests passing across 30 suites. What remains out of scope for *this* build, per the
+source plan's own §10 and the scope decisions recorded above: the React frontend,
+`/auth/register` and password reset, parallel/conditional stage routing, SLA
+escalation, in-browser document editing, and tenant branding on emails — any of
+these would be their own follow-on spec and plan, not a continuation of this one.

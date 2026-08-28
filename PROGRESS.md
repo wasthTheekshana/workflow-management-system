@@ -247,7 +247,34 @@ escalation, in-browser document editing, and tenant branding on emails.
     request the form sends returned a valid token. The two things most likely to
     silently break a freshly wired frontend (compile errors, CORS misconfiguration)
     are the two things checked without a browser.
-- **Next:** write and execute Frontend Phase 2 (admin config screens — template
-  files, workflow templates + stage builder, document types) — recommend the user
-  spot-check the login flow in an actual browser once this phase is running, since
-  that's the one piece automated checks in this environment can't cover.
+- **Wrote and executed Frontend Phase 2 — admin config screens**
+  (`docs/superpowers/plans/2026-08-28-frontend-phase2-admin-config.md`): template
+  file upload/versioning, the workflow template stage builder, and document type
+  CRUD — the same admin configuration path the backend's own Phase 1 exit criteria
+  proved via curl, now with a UI.
+  - **Small backend addition, flagged before doing it:** the stage builder needs to
+    let an admin pick a user or role as a stage assignee, but the backend had no
+    endpoint to list a tenant's users/roles — never part of the original plan,
+    since users/roles were only ever seeded directly. Without it, the admin would
+    paste raw UUIDs into a text box. Added `GET /admin/users` and `GET /admin/roles`
+    (read-only, same tenant/admin-scoped pattern as every other admin route,
+    `password_hash` never selected) — small, justified, tested (3 new tests,
+    106 total backend tests now).
+  - Each admin resource got its own typed `api/*.ts` module (mirroring Phase 1's
+    `api/auth.ts`) consumed directly by page components via TanStack Query — no
+    separate hooks layer, since a one-line wrapper around each query would be a
+    file that adds indirection without adding value.
+  - **Verified exit criteria:** backend suite → 106/106 passing; frontend
+    `npm run build` stayed clean through all three admin screens (100 modules).
+    Same browser-automation gap as Phase 1 — flagged again rather than glossed
+    over — but this time verified something stronger than Phase 1's proof-of-contract
+    check: the *exact* request/response cycle each screen's form actually performs
+    (create template file → upload version → create workflow template → add a
+    user-assigned stage → create a document type linking both) was run end-to-end
+    against the real backend and every response matched what the UI code expects.
+- **Next:** write and execute Frontend Phase 3 (end-user workflow UI — my-tasks
+  landing page, start-instance flow, instance detail with download/upload/claim/
+  forward/send-back/reject/resubmit actions, and the full history view) —
+  recommend the user spot-check the admin screens and login flow in an actual
+  browser once convenient, since that's the one piece automated checks in this
+  environment can't cover.

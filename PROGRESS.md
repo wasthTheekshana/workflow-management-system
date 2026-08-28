@@ -207,14 +207,47 @@ Plans: `docs/superpowers/plans/`.
     complete, correctly-ordered story: 2 versions, 4 audit-log entries with the
     right actors and comments.
 
-## Build status: the source plan's Phase 1 (all 6 phases) is complete
+## Backend status: the source plan's Phase 1 (all 6 phases) is complete
 
 Every phase in `Workflow_Engine_Implementation_Plan.docx` — Foundations, Template &
 Workflow Configuration, Workflow Engine Core, Notifications, Dashboards & Audit
 Trail, and Hardening & QA — has been built, tested, and verified against the running
-system, backend-only per the scope decision made at the start of this build. 103
-tests passing across 30 suites. What remains out of scope for *this* build, per the
-source plan's own §10 and the scope decisions recorded above: the React frontend,
+system. 103 tests passing across 30 suites. What remains out of scope for the
+backend itself, per the source plan's own §10 and the scope decisions recorded above:
 `/auth/register` and password reset, parallel/conditional stage routing, SLA
-escalation, in-browser document editing, and tenant branding on emails — any of
-these would be their own follow-on spec and plan, not a continuation of this one.
+escalation, in-browser document editing, and tenant branding on emails.
+
+## Frontend
+
+- **Brainstormed and wrote the frontend design spec**
+  (`docs/superpowers/specs/2026-08-28-frontend-design.md`): React + Vite +
+  TypeScript + Tailwind, TanStack Query for all server data, React Router, JWT in
+  `localStorage`, full coverage (login, admin config, end-user workflow UI), built
+  checkpoint-by-feature-area to mirror the backend's phase rhythm. Decided against a
+  separate automated frontend test suite for this first build — the backend's 103
+  tests already prove API correctness; frontend verification is `npm run build`
+  (catches TypeScript errors) plus live checks against the real running backend at
+  each checkpoint.
+- **Wrote and executed Frontend Phase 1 — app shell & auth**
+  (`docs/superpowers/plans/2026-08-28-frontend-phase1-app-shell-auth.md`): scaffolded
+  the whole project, an `apiClient` (typed `ApiError`, auto-logout on 401, separate
+  `apiFetchBlob` for file downloads), an `AuthContext` decoding the JWT client-side
+  for UI branching only (never the authorization boundary — the backend's
+  `requireAdmin` still gates every admin call), `ProtectedRoute`/`AdminRoute` guards,
+  the login page, and every route this build will ever have — including admin
+  screens — wired as stubs now so later phases touch one file each instead of also
+  doing routing work.
+  - No browser-automation tool is available in this environment, so full
+    interactive click-through (submitting the login form, watching the redirect)
+    could not be performed by the agent — recorded honestly rather than claimed.
+    What *was* verified: `npm run build` compiles clean across all 20+ new files,
+    the dev server serves `/` with the correct title, and — critically — a live
+    CORS preflight from `http://localhost:5173` against the real backend returned
+    `Access-Control-Allow-Origin: http://localhost:5173`, and the exact login
+    request the form sends returned a valid token. The two things most likely to
+    silently break a freshly wired frontend (compile errors, CORS misconfiguration)
+    are the two things checked without a browser.
+- **Next:** write and execute Frontend Phase 2 (admin config screens — template
+  files, workflow templates + stage builder, document types) — recommend the user
+  spot-check the login flow in an actual browser once this phase is running, since
+  that's the one piece automated checks in this environment can't cover.

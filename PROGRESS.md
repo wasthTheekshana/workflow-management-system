@@ -278,3 +278,48 @@ escalation, in-browser document editing, and tenant branding on emails.
   recommend the user spot-check the admin screens and login flow in an actual
   browser once convenient, since that's the one piece automated checks in this
   environment can't cover.
+- **User confirmed the running system looked good** after both servers were
+  started and spot-checked, then asked to continue straight to Frontend Phase 3.
+- **Wrote and executed Frontend Phase 3 — end-user workflow UI**
+  (`docs/superpowers/plans/2026-08-28-frontend-phase3-instance-workflow-ui.md`):
+  a real My Tasks landing page, a start-a-document flow, and the instance detail
+  screen — download/upload/claim/forward/send-back/reject/resubmit — with full
+  version history and audit log always visible.
+  - **Another small, flagged backend addition:** `POST /instances` (starting a
+    document) is explicitly a non-admin action, but the only endpoint that listed
+    document types to pick from was `GET /admin/document-types` (admin-gated) —
+    a regular user could start an instance if they already knew the UUID, but
+    couldn't discover it. Added `GET /document-types` (authenticated only, no
+    `requireAdmin`, reusing the existing tenant-scoped service function) — the
+    same shape of gap as Phase 2's users/roles endpoints, same fix pattern.
+  - `InstanceDetailPage` mirrors the backend's own `canAct` logic client-side to
+    decide which action buttons to *show* — never to decide what's *allowed*.
+    Every mutation still goes through the real backend check regardless.
+  - **Caught a real bug via the build step, not a browser:** the first draft
+    destructured `const { instance, currentStage } = detail` from
+    `GET /instances/:id`, but that endpoint returns the instance flattened with
+    `currentStage` attached directly (`{ ...instance, currentStage }`), not
+    nested under an `instance` key. `npm run build`'s TypeScript check failed
+    immediately on `Property 'instance' does not exist` — exactly the kind of
+    contract mismatch a browser click-through might not catch quickly if the
+    page happened to still render something. Fixed and reflected in the plan
+    doc too.
+  - **Verified exit criteria:** backend suite → 108/108 passing; frontend build
+    clean; a full live walkthrough — discover document types → start → download
+    → upload → forward (completed the instance, since this test workflow has
+    only one stage) → attempted send-back/reject on the now-completed instance
+    → confirmed both correctly rejected with the exact `{error: "..."}` messages
+    the UI's error banner displays → `GET /instances/:id/history` reconstructed
+    the complete story. Same browser-automation caveat as every prior frontend
+    phase, flagged rather than glossed over.
+
+## Where things stand
+
+Both the backend (all 6 phases, 108 tests) and the frontend (app shell/auth,
+admin config, end-user workflow UI) are functionally complete against the
+original scope. What's left, if the user wants it: a manual browser
+click-through pass (the one thing this environment can't automate), and
+anything from the backend's own out-of-scope list (§10 of the source plan) —
+`/auth/register`, password reset, parallel/conditional stage routing, SLA
+escalation, in-browser document editing, tenant branding on emails — none of
+which were asked for.

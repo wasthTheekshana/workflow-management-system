@@ -6,6 +6,9 @@ function validateEnv(env = process.env) {
   if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) {
     errors.push('JWT_SECRET must be set and at least 32 characters long');
   }
+  if (!env.ONLYOFFICE_JWT_SECRET || env.ONLYOFFICE_JWT_SECRET.length < 32) {
+    errors.push('ONLYOFFICE_JWT_SECRET must be set and at least 32 characters long');
+  }
   if (!env.DB_HOST) errors.push('DB_HOST is required');
   if (!env.DB_PORT) errors.push('DB_PORT is required');
   if (!env.DB_USER) errors.push('DB_USER is required');
@@ -40,6 +43,11 @@ function validateEnv(env = process.env) {
       user: env.SMTP_USER || '',
       password: env.SMTP_PASSWORD || '',
       from: env.SMTP_FROM || 'no-reply@example.com',
+    },
+    onlyoffice: {
+      jwtSecret: env.ONLYOFFICE_JWT_SECRET,
+      documentServerUrl: env.ONLYOFFICE_DOCUMENT_SERVER_URL || 'http://localhost:8082',
+      callbackBaseUrl: env.ONLYOFFICE_CALLBACK_BASE_URL || 'http://host.docker.internal:3000',
     },
     db: {
       host: env.DB_HOST,

@@ -3,6 +3,7 @@ const { validateEnv } = require('../src/config/env');
 describe('validateEnv', () => {
   const validBase = {
     JWT_SECRET: 'a'.repeat(32),
+    ONLYOFFICE_JWT_SECRET: 'b'.repeat(32),
     DB_HOST: 'localhost',
     DB_PORT: '5432',
     DB_USER: 'workflow',
@@ -25,6 +26,11 @@ describe('validateEnv', () => {
     expect(() => validateEnv(env)).toThrow('DB_HOST');
   });
 
+  it('throws when ONLYOFFICE_JWT_SECRET is missing', () => {
+    const env = { ...validBase, ONLYOFFICE_JWT_SECRET: '' };
+    expect(() => validateEnv(env)).toThrow('ONLYOFFICE_JWT_SECRET');
+  });
+
   it('returns a fully-populated config object for valid input', () => {
     const config = validateEnv(validBase);
     expect(config.jwtSecret).toBe(validBase.JWT_SECRET);
@@ -37,6 +43,11 @@ describe('validateEnv', () => {
       user: '',
       password: '',
       from: 'no-reply@example.com',
+    });
+    expect(config.onlyoffice).toEqual({
+      jwtSecret: 'b'.repeat(32),
+      documentServerUrl: 'http://localhost:8082',
+      callbackBaseUrl: 'http://host.docker.internal:3000',
     });
     expect(config.db).toEqual({
       host: 'localhost',

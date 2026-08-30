@@ -29,5 +29,15 @@ services:
       postgres:
         condition: service_healthy
 
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    restart: unless-stopped
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET}
+      JWT_HEADER: Authorization
+    ports:
+      - "127.0.0.1:8082:80"
+
 volumes:
   pgdata:

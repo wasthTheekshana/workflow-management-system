@@ -13,6 +13,7 @@ const adminInstancesRouter = require('./routes/admin/instances');
 const adminUsersRouter = require('./routes/admin/users');
 const adminRolesRouter = require('./routes/admin/roles');
 const documentTypesPublicRouter = require('./routes/documentTypes');
+const filesRouter = require('./routes/files');
 const errorHandler = require('./middleware/errorHandler');
 
 const config = validateEnv();
@@ -45,6 +46,7 @@ app.use('/document-types', documentTypesPublicRouter);
 app.use('/admin/instances', adminInstancesRouter);
 app.use('/admin/users', adminUsersRouter);
 app.use('/admin/roles', adminRolesRouter);
+app.use('/files', filesRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

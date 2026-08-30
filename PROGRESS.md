@@ -380,8 +380,44 @@ which were asked for.
     save-callback test that stands up a real local HTTP fixture server (no
     mocking library) to play the role of the Document Server's ephemeral
     "here's the saved file" URL.
-- **Next:** pull and start the real OnlyOffice Document Server container
-  (large image, pulling in the background), verify it's reachable and that a
-  live edit-config's signed download URL actually resolves, then move to
-  OnlyOffice-2 (the frontend embed component wired into `TemplateFileDetailPage`
-  and `InstanceDetailPage`).
+- **A second, more thorough automated security pass on the same commit found
+  the fix above wasn't the whole story.** Two more findings on
+  `filesCallback.js`: (1) **authorization-bypass** — the callback trusted
+  `req.query.tenantId`/`actorUserId` outright and treated *any* JWT signed
+  with `ONLYOFFICE_JWT_SECRET` as sufficient proof of authenticity. Since the
+  client-facing edit-config response (`config.token`) is signed with that
+  same secret and handed to any authenticated user who fetches an
+  edit-config, that token could be replayed directly at the callback
+  endpoint with an arbitrary tenant/actor/resource in the query string — a
+  full bypass letting any user inject a version onto any tenant's document.
+  (2) **SSRF** — `downloadSavedBuffer` fetched `req.body.url` with no
+  restriction at all, so a forged callback could make the backend fetch
+  arbitrary internal hosts or cloud metadata endpoints.
+  - Fixed both together, not piecemeal: a *separate*, resource-bound
+    callback token (`purpose` + `resourceType` + `resourceId` + `tenantId` +
+    `actorUserId`) is now minted only when an edit session is genuinely
+    edit-mode — a view-only session can never obtain one, closing the
+    escalation path at the source rather than patching around it. The
+    callback route verifies both this token (proves authorization for this
+    exact resource) and the Document-Server-signed relay token (proves the
+    status/url payload genuinely came through the editor's own callback
+    mechanism), reading status/url from the verified relay payload rather
+    than raw `req.body`. The SSRF fix requires the download URL's hostname
+    to match a configured OnlyOffice host and refuses to follow redirects —
+    the two ways a naive host check gets bypassed.
+  - **Verified exit criteria:** full suite → 125/125 passing, including new
+    tests proving a callback token scoped to the wrong resource is rejected,
+    a missing callback token is rejected even with a valid relay token, and
+    an SSRF attempt at a cloud metadata address (`169.254.169.254`) is
+    refused before any download happens.
+- **Pulled and started the real OnlyOffice Document Server** and verified
+  the entire pipeline against it live, not simulated: the Document Server's
+  welcome page responds; a fresh edit-config's signed `document.url`
+  resolves to the real `.docx` bytes; a properly-shaped simulated save
+  callback pointed at non-`.docx` content was correctly rejected by the
+  signature check; and a callback pointed at the real signed-download URL
+  (simulating an actual editor save) took the template file's version count
+  from 1 to 2 — the complete real flow, working end to end.
+- **Next:** OnlyOffice-2 — the frontend embed component (`OnlineEditor.tsx`)
+  wired into `TemplateFileDetailPage` and `InstanceDetailPage`, the last
+  piece needed to close this feature out.

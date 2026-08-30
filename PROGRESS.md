@@ -418,6 +418,36 @@ which were asked for.
   signature check; and a callback pointed at the real signed-download URL
   (simulating an actual editor save) took the template file's version count
   from 1 to 2 — the complete real flow, working end to end.
-- **Next:** OnlyOffice-2 — the frontend embed component (`OnlineEditor.tsx`)
-  wired into `TemplateFileDetailPage` and `InstanceDetailPage`, the last
-  piece needed to close this feature out.
+- **Wrote and executed OnlyOffice-2 (frontend embed)**
+  (`docs/superpowers/plans/2026-08-28-onlyoffice-2-frontend-embed.md`): an
+  `OnlineEditor` component that dynamically loads the Document Server's own
+  JS API script (can't be bundled — it's served by that service, and its URL
+  differs per deployment) and instantiates `DocsAPI.DocEditor` with a config
+  fetched from OnlyOffice-1's edit-config endpoints; wired an "Edit Online"
+  button into both `TemplateFileDetailPage` (admin) and `InstanceDetailPage`
+  (end user), additive alongside the existing upload/download controls, not
+  replacing them.
+  - Caught and fixed a real bug myself before it reached anyone: the error
+    banner on the instance page was initially placed inside the
+    `{!editorConfig && (...)}` block, meaning an editor-load failure (which
+    fires while `editorConfig` is still set) would never actually display —
+    moved it above both branches so it's visible regardless of which one is
+    showing.
+  - **Verified exit criteria:** backend suite → 125/125 passing (unchanged,
+    this phase touched no backend code); frontend `npm run build` stayed
+    clean through both wiring changes; the exact script URL `OnlineEditor`
+    injects (`http://localhost:8082/web-apps/apps/api/documents/api.js`)
+    returns `200` against the real running Document Server. As with every
+    frontend phase, no browser-automation tool exists in this environment,
+    so the actual editor UI rendering and a live type-and-save round trip
+    couldn't be watched directly — flagged rather than glossed over.
+
+## In-browser document editing: complete
+
+Both halves of the feature the user explicitly asked for are done: the
+backend integration (config signing, signed downloads, the save callback,
+and the two-round security hardening that followed) and the frontend embed.
+Recommend a manual browser pass — open a template file or an in-progress
+instance you can act on, click Edit Online, make a change, and confirm it
+saves as a new version — since that's the one thing automated checks in this
+environment can't cover.

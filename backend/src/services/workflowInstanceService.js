@@ -107,6 +107,28 @@ async function claimInstance(tenantId, userId, instanceId) {
   return updated;
 }
 
+async function saveInstanceVersionBuffer(tenantId, instanceId, uploadedBy, buffer, extension) {
+  const latestVersion = await db('instance_versions')
+    .where({ tenant_id: tenantId, workflow_instance_id: instanceId })
+    .max('version_number as max')
+    .first();
+  const nextVersionNumber = (latestVersion && latestVersion.max ? latestVersion.max : 0) + 1;
+
+  const relativePath = await saveUploadedFile(tenantId, buffer, extension);
+
+  const [version] = await db('instance_versions')
+    .insert({
+      tenant_id: tenantId,
+      workflow_instance_id: instanceId,
+      version_number: nextVersionNumber,
+      file_path: relativePath,
+      uploaded_by: uploadedBy,
+    })
+    .returning('*');
+
+  return version;
+}
+
 async function addInstanceVersion(tenantId, userId, instanceId, file) {
   const { instance, documentType, stage } = await getInstanceDetail(tenantId, instanceId);
 
@@ -118,30 +140,11 @@ async function addInstanceVersion(tenantId, userId, instanceId, file) {
   }
 
   assertAllowedUpload(file, documentType.allowed_extensions, documentType.max_upload_size_bytes);
-
-  const latestVersion = await db('instance_versions')
-    .where({ tenant_id: tenantId, workflow_instance_id: instanceId })
-    .max('version_number as max')
-    .first();
-  const nextVersionNumber = (latestVersion && latestVersion.max ? latestVersion.max : 0) + 1;
-
   const extension = file.originalname.split('.').pop().toLowerCase();
-  const relativePath = await saveUploadedFile(tenantId, file.buffer, extension);
-
-  const [version] = await db('instance_versions')
-    .insert({
-      tenant_id: tenantId,
-      workflow_instance_id: instanceId,
-      version_number: nextVersionNumber,
-      file_path: relativePath,
-      uploaded_by: userId,
-    })
-    .returning('*');
-
-  return version;
+  return saveInstanceVersionBuffer(tenantId, instanceId, userId, file.buffer, extension);
 }
 
-async function getCurrentFilePath(tenantId, instanceId) {
+async function getCurrentFileInfo(tenantId, instanceId) {
   const { instance } = await getInstanceDetail(tenantId, instanceId);
 
   const latestInstanceVersion = await db('instance_versions')
@@ -149,14 +152,18 @@ async function getCurrentFilePath(tenantId, instanceId) {
     .orderBy('version_number', 'desc')
     .first();
 
-  const relativePath = latestInstanceVersion
-    ? latestInstanceVersion.file_path
-    : (
-        await db('template_file_versions')
-          .where({ tenant_id: tenantId, id: instance.template_file_version_id })
-          .first()
-      ).file_path;
+  if (latestInstanceVersion) {
+    return { relativePath: latestInstanceVersion.file_path, versionLabel: `iv${latestInstanceVersion.version_number}` };
+  }
 
+  const templateVersion = await db('template_file_versions')
+    .where({ tenant_id: tenantId, id: instance.template_file_version_id })
+    .first();
+  return { relativePath: templateVersion.file_path, versionLabel: `tv${templateVersion.version_number}` };
+}
+
+async function getCurrentFilePath(tenantId, instanceId) {
+  const { relativePath } = await getCurrentFileInfo(tenantId, instanceId);
   return path.join(STORAGE_ROOT, relativePath);
 }
 
@@ -374,6 +381,8 @@ module.exports = {
   startInstance,
   claimInstance,
   addInstanceVersion,
+  saveInstanceVersionBuffer,
+  getCurrentFileInfo,
   getCurrentFilePath,
   forwardInstance,
   sendBackInstance,

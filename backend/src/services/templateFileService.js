@@ -29,23 +29,14 @@ async function getTemplateFile(tenantId, templateFileId) {
   return { ...templateFile, versions };
 }
 
-async function addTemplateFileVersion(tenantId, templateFileId, uploadedBy, file) {
-  assertUuid(templateFileId, 'templateFileId');
-  const templateFile = await db('template_files').where({ tenant_id: tenantId, id: templateFileId }).first();
-  if (!templateFile) {
-    throw new AppError(404, 'Template file not found');
-  }
-
-  assertAllowedUpload(file, ALLOWED_TEMPLATE_EXTENSIONS, MAX_TEMPLATE_UPLOAD_BYTES);
-
+async function saveTemplateFileVersionBuffer(tenantId, templateFileId, uploadedBy, buffer, extension) {
   const latestVersion = await db('template_file_versions')
     .where({ tenant_id: tenantId, template_file_id: templateFileId })
     .max('version_number as max')
     .first();
   const nextVersionNumber = (latestVersion && latestVersion.max ? latestVersion.max : 0) + 1;
 
-  const extension = file.originalname.split('.').pop().toLowerCase();
-  const relativePath = await saveUploadedFile(tenantId, file.buffer, extension);
+  const relativePath = await saveUploadedFile(tenantId, buffer, extension);
 
   const [version] = await db('template_file_versions')
     .insert({
@@ -60,4 +51,22 @@ async function addTemplateFileVersion(tenantId, templateFileId, uploadedBy, file
   return version;
 }
 
-module.exports = { createTemplateFile, listTemplateFiles, getTemplateFile, addTemplateFileVersion };
+async function addTemplateFileVersion(tenantId, templateFileId, uploadedBy, file) {
+  assertUuid(templateFileId, 'templateFileId');
+  const templateFile = await db('template_files').where({ tenant_id: tenantId, id: templateFileId }).first();
+  if (!templateFile) {
+    throw new AppError(404, 'Template file not found');
+  }
+
+  assertAllowedUpload(file, ALLOWED_TEMPLATE_EXTENSIONS, MAX_TEMPLATE_UPLOAD_BYTES);
+  const extension = file.originalname.split('.').pop().toLowerCase();
+  return saveTemplateFileVersionBuffer(tenantId, templateFileId, uploadedBy, file.buffer, extension);
+}
+
+module.exports = {
+  createTemplateFile,
+  listTemplateFiles,
+  getTemplateFile,
+  addTemplateFileVersion,
+  saveTemplateFileVersionBuffer,
+};

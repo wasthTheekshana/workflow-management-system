@@ -18,6 +18,11 @@ async function getInstanceDetail(tenantId, instanceId) {
     .where({ tenant_id: tenantId, id: instance.document_type_id })
     .first();
 
+  const templateFile = await db('template_files')
+    .where({ tenant_id: tenantId, id: documentType.template_file_id })
+    .first();
+  documentType.content_format = templateFile.content_format;
+
   const stage = await db('workflow_stages')
     .where({
       tenant_id: tenantId,
@@ -138,10 +143,66 @@ async function addInstanceVersion(tenantId, userId, instanceId, file) {
   if (!canAct(stage, instance, userId)) {
     throw new AppError(403, 'You are not authorized to act on this instance right now');
   }
+  if (documentType.content_format !== 'docx') {
+    throw new AppError(400, 'This instance does not accept file uploads; it is a rich-text document');
+  }
 
   assertAllowedUpload(file, documentType.allowed_extensions, documentType.max_upload_size_bytes);
   const extension = file.originalname.split('.').pop().toLowerCase();
   return saveInstanceVersionBuffer(tenantId, instanceId, userId, file.buffer, extension);
+}
+
+async function addInstanceContentVersion(tenantId, userId, instanceId, content) {
+  const { instance, documentType, stage } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'in_progress') {
+    throw new AppError(400, 'Only in-progress instances accept new versions');
+  }
+  if (!canAct(stage, instance, userId)) {
+    throw new AppError(403, 'You are not authorized to act on this instance right now');
+  }
+  if (documentType.content_format !== 'richtext') {
+    throw new AppError(400, 'This instance is not a rich-text document');
+  }
+  if (typeof content !== 'object' || content === null) {
+    throw new AppError(400, 'content must be a JSON object');
+  }
+
+  const latestVersion = await db('instance_versions')
+    .where({ tenant_id: tenantId, workflow_instance_id: instanceId })
+    .max('version_number as max')
+    .first();
+  const nextVersionNumber = (latestVersion && latestVersion.max ? latestVersion.max : 0) + 1;
+
+  const [version] = await db('instance_versions')
+    .insert({
+      tenant_id: tenantId,
+      workflow_instance_id: instanceId,
+      version_number: nextVersionNumber,
+      content: JSON.stringify(content),
+      uploaded_by: userId,
+    })
+    .returning('*');
+
+  return version;
+}
+
+async function getCurrentContent(tenantId, instanceId) {
+  const { instance } = await getInstanceDetail(tenantId, instanceId);
+
+  const latestInstanceVersion = await db('instance_versions')
+    .where({ tenant_id: tenantId, workflow_instance_id: instanceId })
+    .orderBy('version_number', 'desc')
+    .first();
+
+  if (latestInstanceVersion) {
+    return latestInstanceVersion.content;
+  }
+
+  const templateVersion = await db('template_file_versions')
+    .where({ tenant_id: tenantId, id: instance.template_file_version_id })
+    .first();
+  return templateVersion.content;
 }
 
 async function getCurrentFileInfo(tenantId, instanceId) {
@@ -381,6 +442,8 @@ module.exports = {
   startInstance,
   claimInstance,
   addInstanceVersion,
+  addInstanceContentVersion,
+  getCurrentContent,
   saveInstanceVersionBuffer,
   getCurrentFileInfo,
   getCurrentFilePath,

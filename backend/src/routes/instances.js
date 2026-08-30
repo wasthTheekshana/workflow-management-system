@@ -6,6 +6,8 @@ const {
   getInstanceDetail,
   claimInstance,
   addInstanceVersion,
+  addInstanceContentVersion,
+  getCurrentContent,
   getCurrentFilePath,
   forwardInstance,
   sendBackInstance,
@@ -39,8 +41,8 @@ router.post('/', async (req, res, next) => {
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const { instance, stage } = await getInstanceDetail(req.user.tenantId, req.params.id);
-    res.status(200).json({ ...instance, currentStage: stage });
+    const { instance, stage, documentType } = await getInstanceDetail(req.user.tenantId, req.params.id);
+    res.status(200).json({ ...instance, currentStage: stage, contentFormat: documentType.content_format });
   } catch (err) {
     next(err);
   }
@@ -71,6 +73,29 @@ router.get('/:id/current-file', async (req, res, next) => {
   try {
     const absolutePath = await getCurrentFilePath(req.user.tenantId, req.params.id);
     res.download(absolutePath);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/content-versions', async (req, res, next) => {
+  try {
+    const version = await addInstanceContentVersion(
+      req.user.tenantId,
+      req.user.userId,
+      req.params.id,
+      req.body.content,
+    );
+    res.status(201).json(version);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/current-content', async (req, res, next) => {
+  try {
+    const content = await getCurrentContent(req.user.tenantId, req.params.id);
+    res.status(200).json({ content });
   } catch (err) {
     next(err);
   }

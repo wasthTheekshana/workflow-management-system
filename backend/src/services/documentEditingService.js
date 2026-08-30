@@ -79,6 +79,9 @@ async function buildTemplateEditConfig(tenantId, templateFileId, adminUserId) {
 
 async function buildInstanceEditConfig(tenantId, instanceId, userId) {
   const { instance, stage, documentType } = await getInstanceDetail(tenantId, instanceId);
+  if (documentType.content_format !== 'docx') {
+    throw new AppError(400, 'This instance is not a docx document; use the rich-text editor instead');
+  }
   const { relativePath, versionLabel } = await getCurrentFileInfo(tenantId, instanceId);
 
   const mode = instance.status === 'in_progress' && canAct(stage, instance, userId) ? 'edit' : 'view';

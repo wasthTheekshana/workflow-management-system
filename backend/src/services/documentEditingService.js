@@ -49,6 +49,9 @@ async function buildTemplateEditConfig(tenantId, templateFileId, adminUserId) {
   if (!templateFile) {
     throw new AppError(404, 'Template file not found');
   }
+  if (templateFile.content_format !== 'docx') {
+    throw new AppError(400, 'This template is not a docx template; use the rich-text editor instead');
+  }
   const latestVersion = await db('template_file_versions')
     .where({ tenant_id: tenantId, template_file_id: templateFileId })
     .orderBy('version_number', 'desc')

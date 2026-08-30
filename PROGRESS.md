@@ -323,3 +323,65 @@ anything from the backend's own out-of-scope list (§10 of the source plan) —
 `/auth/register`, password reset, parallel/conditional stage routing, SLA
 escalation, in-browser document editing, tenant branding on emails — none of
 which were asked for.
+
+## In-browser document editing (OnlyOffice) — new scope, explicitly requested
+
+- **User asked for real in-browser `.docx` editing** — admin edits a template
+  directly in the browser; an end user edits their instance's current file in
+  the browser and saves it (creating a new version, same as an upload) before
+  explicitly forwarding. This is exactly the item the source plan's §10 had
+  called out of scope ("In-browser document editing (OnlyOffice/Collabora)")
+  — a real scope expansion, not a bug fix, so it went through brainstorming
+  again rather than straight into code.
+  - Design questions resolved with the user: OnlyOffice Document Server
+    (self-hosted, Docker) over Collabora (simpler config+callback integration
+    vs. full WOPI) and over a JS-only editor (no browser library edits real
+    `.docx` with Word-level fidelity without risking corrupting formatting);
+    one editing mechanism for both admin templates and user instances; saving
+    stays separate from Forward/Send Back/Reject — editing only replaces the
+    download/upload step, not the workflow transitions.
+  - Spec: `docs/superpowers/specs/2026-08-28-inbrowser-document-editing-design.md`.
+- **Wrote and executed OnlyOffice-1 (backend integration)**
+  (`docs/superpowers/plans/2026-08-28-onlyoffice-1-backend-integration.md`):
+  a new `onlyoffice/documentserver` Docker service; a `downloadToken` utility
+  (short-lived, narrowly-scoped JWTs so the Document Server can fetch a file
+  without a user session); `GET /files/signed-download`; a
+  `documentEditingService` that builds and signs OnlyOffice editor configs for
+  both template files (admin, always edit-mode) and instances (edit-mode only
+  when the caller's own `canAct` check passes, otherwise view-only — reusing
+  the exact function the engine itself uses); `GET /admin/template-files/:id/edit-config`
+  and `GET /instances/:id/edit-config`; a `POST /files/callback/*` pair that
+  downloads a saved file from the Document Server and creates a new version,
+  through the same validation the existing upload path uses.
+  - **Refactored before adding the callback**, not after: extracted
+    `saveTemplateFileVersionBuffer`/`saveInstanceVersionBuffer` out of the
+    existing multer-based upload functions so there is exactly one place that
+    decides "how a version gets created" — fed by either a multer file or a
+    buffer downloaded from the editor's callback. Verified the refactor alone
+    changed nothing (existing tests green) before building the new callback
+    path on top of it.
+  - **Automated security review caught a real, serious vulnerability**, not a
+    style nit: `downloadToken.js` signed its short-lived file tokens with the
+    *same* `JWT_SECRET` as user session tokens, with no claim distinguishing
+    the two token types. A leaked download token fed into `authenticate()`
+    would pass `jwt.verify()` cleanly and produce
+    `req.user = { userId: undefined, tenantId: undefined, isAdmin: false }` —
+    and Knex silently drops `undefined` keys from `.where()` clauses, so
+    *every* tenant-scoped query in the app would have lost its tenant filter
+    entirely for that request. Fixed two ways: `authenticate()` now requires
+    `sub`/`tenant_id` to actually be present before trusting a token, and
+    download tokens carry a `purpose: 'file-download'` claim checked on every
+    verify — so a token issued for one purpose can never be replayed as the
+    other, even sharing a signing secret. Also added a resolved-path check in
+    the signed-download route as defense-in-depth against path traversal,
+    though the current call site was never actually reachable with untrusted
+    input.
+  - **Verified exit criteria:** full test suite → 122/122 passing, including a
+    save-callback test that stands up a real local HTTP fixture server (no
+    mocking library) to play the role of the Document Server's ephemeral
+    "here's the saved file" URL.
+- **Next:** pull and start the real OnlyOffice Document Server container
+  (large image, pulling in the background), verify it's reachable and that a
+  live edit-config's signed download URL actually resolves, then move to
+  OnlyOffice-2 (the frontend embed component wired into `TemplateFileDetailPage`
+  and `InstanceDetailPage`).

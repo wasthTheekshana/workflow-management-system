@@ -16,6 +16,8 @@ import {
 } from '../api/instances';
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../api/client';
+import { getInstanceEditConfig, OnlyOfficeConfig } from '../api/documentEditing';
+import { OnlineEditor } from '../components/OnlineEditor';
 
 function canActLocally(stage: StageInfo, instance: WorkflowInstance, userId: string): boolean {
   if (instance.claimed_by) {
@@ -33,6 +35,7 @@ export function InstanceDetailPage() {
   const queryClient = useQueryClient();
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [editorConfig, setEditorConfig] = useState<OnlyOfficeConfig | null>(null);
 
   const { data: detail, isLoading } = useQuery({
     queryKey: ['instance', id],
@@ -106,6 +109,14 @@ export function InstanceDetailPage() {
     },
     onError: (err) => onError(err, 'Download failed'),
   });
+  const editConfigMutation = useMutation({
+    mutationFn: () => getInstanceEditConfig(id!),
+    onSuccess: (config) => {
+      setError(null);
+      setEditorConfig(config);
+    },
+    onError: (err) => onError(err, 'Could not open the editor'),
+  });
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -113,6 +124,11 @@ export function InstanceDetailPage() {
     setError(null);
     uploadMutation.mutate(file);
     event.target.value = '';
+  }
+
+  function closeEditor() {
+    setEditorConfig(null);
+    invalidateAll();
   }
 
   if (isLoading) return <p className="text-sm text-gray-500">Loading...</p>;
@@ -135,118 +151,138 @@ export function InstanceDetailPage() {
         Stage: {currentStage.name} — status: {instance.status}
       </p>
 
-      <div className="mb-6 flex flex-wrap gap-2">
-        <button
-          onClick={() => downloadMutation.mutate()}
-          disabled={downloadMutation.isPending}
-          className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
-        >
-          Download current file
-        </button>
+      {error && <p className="mb-6 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
-        {canClaim && (
-          <button
-            onClick={() => claimMutation.mutate()}
-            disabled={claimMutation.isPending}
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
-          >
-            Claim
-          </button>
-        )}
+      {editorConfig && <OnlineEditor config={editorConfig} onClose={closeEditor} onError={setError} />}
 
-        {isMine && (
-          <label className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50">
-            Upload new version
-            <input type="file" onChange={handleFileChange} className="hidden" disabled={uploadMutation.isPending} />
-          </label>
-        )}
+      {!editorConfig && (
+        <>
+          <div className="mb-6 flex flex-wrap gap-2">
+            <button
+              onClick={() => downloadMutation.mutate()}
+              disabled={downloadMutation.isPending}
+              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+            >
+              Download current file
+            </button>
 
-        {canResubmit && (
-          <button
-            onClick={() => resubmitMutation.mutate()}
-            disabled={resubmitMutation.isPending}
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
-          >
-            Resubmit
-          </button>
-        )}
-      </div>
-
-      {isMine && (
-        <div className="mb-6 rounded border border-gray-200 bg-white p-4">
-          <label className="mb-3 block text-sm">
-            Comment (optional)
-            <input
-              type="text"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-            />
-          </label>
-          <div className="flex gap-2">
-            {currentStage.allowed_actions.includes('forward') && (
+            {canClaim && (
               <button
-                onClick={() => forwardMutation.mutate()}
-                disabled={forwardMutation.isPending}
-                className="rounded bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700"
+                onClick={() => claimMutation.mutate()}
+                disabled={claimMutation.isPending}
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
               >
-                Forward
+                Claim
               </button>
             )}
-            {currentStage.allowed_actions.includes('send_back') && instance.current_stage_order > 1 && (
-              <button
-                onClick={() => sendBackMutation.mutate()}
-                disabled={sendBackMutation.isPending}
-                className="rounded bg-yellow-600 px-3 py-2 text-sm text-white hover:bg-yellow-700"
-              >
-                Send Back
-              </button>
+
+            {isMine && (
+              <>
+                <button
+                  onClick={() => editConfigMutation.mutate()}
+                  disabled={editConfigMutation.isPending}
+                  className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                >
+                  Edit Online
+                </button>
+                <label className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50">
+                  Upload new version
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    disabled={uploadMutation.isPending}
+                  />
+                </label>
+              </>
             )}
-            {currentStage.allowed_actions.includes('reject') && (
+
+            {canResubmit && (
               <button
-                onClick={() => {
-                  if (window.confirm('Reject this document? This cannot be undone.')) {
-                    rejectMutation.mutate();
-                  }
-                }}
-                disabled={rejectMutation.isPending}
-                className="rounded bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+                onClick={() => resubmitMutation.mutate()}
+                disabled={resubmitMutation.isPending}
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
               >
-                Reject
+                Resubmit
               </button>
             )}
           </div>
-        </div>
+
+          {isMine && (
+            <div className="mb-6 rounded border border-gray-200 bg-white p-4">
+              <label className="mb-3 block text-sm">
+                Comment (optional)
+                <input
+                  type="text"
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+              <div className="flex gap-2">
+                {currentStage.allowed_actions.includes('forward') && (
+                  <button
+                    onClick={() => forwardMutation.mutate()}
+                    disabled={forwardMutation.isPending}
+                    className="rounded bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700"
+                  >
+                    Forward
+                  </button>
+                )}
+                {currentStage.allowed_actions.includes('send_back') && instance.current_stage_order > 1 && (
+                  <button
+                    onClick={() => sendBackMutation.mutate()}
+                    disabled={sendBackMutation.isPending}
+                    className="rounded bg-yellow-600 px-3 py-2 text-sm text-white hover:bg-yellow-700"
+                  >
+                    Send Back
+                  </button>
+                )}
+                {currentStage.allowed_actions.includes('reject') && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Reject this document? This cannot be undone.')) {
+                        rejectMutation.mutate();
+                      }
+                    }}
+                    disabled={rejectMutation.isPending}
+                    className="rounded bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700"
+                  >
+                    Reject
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">Version History</h2>
+          <ul className="mb-6 divide-y divide-gray-200 rounded border border-gray-200 bg-white">
+            {history?.versions.map((version) => (
+              <li key={version.id} className="px-4 py-3 text-sm">
+                v{version.version_number} — {new Date(version.created_at).toLocaleString()}
+              </li>
+            ))}
+            {history?.versions.length === 0 && (
+              <li className="px-4 py-3 text-sm text-gray-500">No versions uploaded yet.</li>
+            )}
+          </ul>
+
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">Audit Log</h2>
+          <ul className="divide-y divide-gray-200 rounded border border-gray-200 bg-white">
+            {history?.auditLog.map((action) => (
+              <li key={action.id} className="px-4 py-3 text-sm">
+                <span className="font-medium">{action.action_type}</span>
+                {' — '}
+                {new Date(action.created_at).toLocaleString()}
+                {action.comment && <span className="block text-gray-600">"{action.comment}"</span>}
+              </li>
+            ))}
+            {history?.auditLog.length === 0 && (
+              <li className="px-4 py-3 text-sm text-gray-500">No actions recorded yet.</li>
+            )}
+          </ul>
+        </>
       )}
-
-      {error && <p className="mb-6 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">Version History</h2>
-      <ul className="mb-6 divide-y divide-gray-200 rounded border border-gray-200 bg-white">
-        {history?.versions.map((version) => (
-          <li key={version.id} className="px-4 py-3 text-sm">
-            v{version.version_number} — {new Date(version.created_at).toLocaleString()}
-          </li>
-        ))}
-        {history?.versions.length === 0 && (
-          <li className="px-4 py-3 text-sm text-gray-500">No versions uploaded yet.</li>
-        )}
-      </ul>
-
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">Audit Log</h2>
-      <ul className="divide-y divide-gray-200 rounded border border-gray-200 bg-white">
-        {history?.auditLog.map((action) => (
-          <li key={action.id} className="px-4 py-3 text-sm">
-            <span className="font-medium">{action.action_type}</span>
-            {' — '}
-            {new Date(action.created_at).toLocaleString()}
-            {action.comment && <span className="block text-gray-600">"{action.comment}"</span>}
-          </li>
-        ))}
-        {history?.auditLog.length === 0 && (
-          <li className="px-4 py-3 text-sm text-gray-500">No actions recorded yet.</li>
-        )}
-      </ul>
     </div>
   );
 }

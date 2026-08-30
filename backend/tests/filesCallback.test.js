@@ -17,15 +17,27 @@ function signOnlyOfficeJwt(payload) {
   return jwt.sign(payload, config.onlyoffice.jwtSecret, { algorithm: 'HS256' });
 }
 
+function signCallbackToken({ resourceType, resourceId, tenantId, actorUserId }) {
+  const config = validateEnv();
+  return jwt.sign(
+    { purpose: 'onlyoffice-callback', resourceType, resourceId, tenantId, actorUserId },
+    config.onlyoffice.jwtSecret,
+    { algorithm: 'HS256', expiresIn: '4h' },
+  );
+}
+
 async function startFixtureServer(buffer) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       res.writeHead(200);
       res.end(buffer);
     });
-    server.listen(0, '127.0.0.1', () => {
+    // Bound to localhost so its hostname matches config.onlyoffice's
+    // configured hosts (also localhost in the test .env) — the callback
+    // route only downloads from a hostname it trusts.
+    server.listen(0, 'localhost', () => {
       const { port } = server.address();
-      resolve({ server, url: `http://127.0.0.1:${port}/saved.docx` });
+      resolve({ server, url: `http://localhost:${port}/saved.docx` });
     });
   });
 }
@@ -101,18 +113,54 @@ describe('POST /files/callback', () => {
     await db.destroy();
   });
 
-  it('rejects a callback with no valid OnlyOffice token', async () => {
+  it('rejects a callback with no valid OnlyOffice relay token', async () => {
+    const callbackToken = signCallbackToken({
+      resourceType: 'template-files',
+      resourceId: templateFileId,
+      tenantId: TENANT_ID,
+      actorUserId: ADMIN_ID,
+    });
     const response = await request(app)
-      .post(`/files/callback/template-files/${templateFileId}?tenantId=${TENANT_ID}&actorUserId=${ADMIN_ID}`)
+      .post(`/files/callback/template-files/${templateFileId}?callbackToken=${callbackToken}`)
+      .send({ status: 2, url: fixtureUrl });
+    expect(response.status).toBe(403);
+  });
+
+  it('rejects a valid relay token with no callback authorization token', async () => {
+    const relayToken = signOnlyOfficeJwt({ status: 2, url: fixtureUrl });
+    const response = await request(app)
+      .post(`/files/callback/template-files/${templateFileId}`)
+      .set('Authorization', `Bearer ${relayToken}`)
+      .send({ status: 2, url: fixtureUrl });
+    expect(response.status).toBe(403);
+  });
+
+  it("rejects a callback authorization token scoped to a different resource", async () => {
+    const relayToken = signOnlyOfficeJwt({ status: 2, url: fixtureUrl });
+    const wrongResourceToken = signCallbackToken({
+      resourceType: 'template-files',
+      resourceId: instanceId, // wrong id for this route
+      tenantId: TENANT_ID,
+      actorUserId: ADMIN_ID,
+    });
+    const response = await request(app)
+      .post(`/files/callback/template-files/${templateFileId}?callbackToken=${wrongResourceToken}`)
+      .set('Authorization', `Bearer ${relayToken}`)
       .send({ status: 2, url: fixtureUrl });
     expect(response.status).toBe(403);
   });
 
   it('creates a new template file version on a valid save callback', async () => {
-    const token = signOnlyOfficeJwt({ status: 2, url: fixtureUrl });
+    const relayToken = signOnlyOfficeJwt({ status: 2, url: fixtureUrl });
+    const callbackToken = signCallbackToken({
+      resourceType: 'template-files',
+      resourceId: templateFileId,
+      tenantId: TENANT_ID,
+      actorUserId: ADMIN_ID,
+    });
     const response = await request(app)
-      .post(`/files/callback/template-files/${templateFileId}?tenantId=${TENANT_ID}&actorUserId=${ADMIN_ID}`)
-      .set('Authorization', `Bearer ${token}`)
+      .post(`/files/callback/template-files/${templateFileId}?callbackToken=${callbackToken}`)
+      .set('Authorization', `Bearer ${relayToken}`)
       .send({ status: 2, url: fixtureUrl });
 
     expect(response.status).toBe(200);
@@ -124,10 +172,16 @@ describe('POST /files/callback', () => {
   });
 
   it('creates a new instance version on a valid save callback', async () => {
-    const token = signOnlyOfficeJwt({ status: 2, url: fixtureUrl });
+    const relayToken = signOnlyOfficeJwt({ status: 2, url: fixtureUrl });
+    const callbackToken = signCallbackToken({
+      resourceType: 'instances',
+      resourceId: instanceId,
+      tenantId: TENANT_ID,
+      actorUserId: ASSIGNEE_ID,
+    });
     const response = await request(app)
-      .post(`/files/callback/instances/${instanceId}?tenantId=${TENANT_ID}&actorUserId=${ASSIGNEE_ID}`)
-      .set('Authorization', `Bearer ${token}`)
+      .post(`/files/callback/instances/${instanceId}?callbackToken=${callbackToken}`)
+      .set('Authorization', `Bearer ${relayToken}`)
       .send({ status: 2, url: fixtureUrl });
 
     expect(response.status).toBe(200);
@@ -138,11 +192,36 @@ describe('POST /files/callback', () => {
     expect(versions[0].uploaded_by).toBe(ASSIGNEE_ID);
   });
 
-  it('does nothing for a non-save status (e.g. still editing)', async () => {
-    const token = signOnlyOfficeJwt({ status: 1 });
+  it('refuses to download from an untrusted host even with valid tokens', async () => {
+    const relayToken = signOnlyOfficeJwt({ status: 2, url: 'http://169.254.169.254/latest/meta-data/' });
+    const callbackToken = signCallbackToken({
+      resourceType: 'instances',
+      resourceId: instanceId,
+      tenantId: TENANT_ID,
+      actorUserId: ASSIGNEE_ID,
+    });
     const response = await request(app)
-      .post(`/files/callback/instances/${instanceId}?tenantId=${TENANT_ID}&actorUserId=${ASSIGNEE_ID}`)
-      .set('Authorization', `Bearer ${token}`)
+      .post(`/files/callback/instances/${instanceId}?callbackToken=${callbackToken}`)
+      .set('Authorization', `Bearer ${relayToken}`)
+      .send({ status: 2, url: 'http://169.254.169.254/latest/meta-data/' });
+
+    expect(response.status).toBe(400);
+
+    const versions = await db('instance_versions').where({ tenant_id: TENANT_ID, workflow_instance_id: instanceId });
+    expect(versions).toHaveLength(1); // unchanged — the SSRF attempt never reached downloadSavedBuffer's save step
+  });
+
+  it('does nothing for a non-save status (e.g. still editing)', async () => {
+    const relayToken = signOnlyOfficeJwt({ status: 1 });
+    const callbackToken = signCallbackToken({
+      resourceType: 'instances',
+      resourceId: instanceId,
+      tenantId: TENANT_ID,
+      actorUserId: ASSIGNEE_ID,
+    });
+    const response = await request(app)
+      .post(`/files/callback/instances/${instanceId}?callbackToken=${callbackToken}`)
+      .set('Authorization', `Bearer ${relayToken}`)
       .send({ status: 1 });
 
     expect(response.status).toBe(200);

@@ -13,7 +13,16 @@ router.get('/signed-download', (req, res, next) => {
       throw new AppError(400, 'token is required');
     }
     const { filePath } = verifyDownloadToken(token);
-    res.sendFile(path.join(STORAGE_ROOT, filePath));
+
+    // Defense-in-depth: the token is signed by us and filePath always comes
+    // from our own DB, never user input — but a resolved-path check costs
+    // nothing and keeps this endpoint safe even if that ever changes.
+    const resolvedPath = path.resolve(STORAGE_ROOT, filePath);
+    if (!resolvedPath.startsWith(path.resolve(STORAGE_ROOT) + path.sep)) {
+      throw new AppError(400, 'Invalid file path');
+    }
+
+    res.sendFile(resolvedPath);
   } catch (err) {
     next(err);
   }

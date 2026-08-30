@@ -8,6 +8,7 @@ const {
   getTemplateFile,
   addTemplateFileVersion,
 } = require('../../services/templateFileService');
+const { buildTemplateEditConfig } = require('../../services/documentEditingService');
 
 const router = express.Router();
 
@@ -47,6 +48,15 @@ router.post('/:id/versions', upload.single('file'), async (req, res, next) => {
     }
     const version = await addTemplateFileVersion(req.user.tenantId, req.params.id, req.user.userId, req.file);
     res.status(201).json(version);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/edit-config', async (req, res, next) => {
+  try {
+    const editConfig = await buildTemplateEditConfig(req.user.tenantId, req.params.id, req.user.userId);
+    res.status(200).json(editConfig);
   } catch (err) {
     next(err);
   }

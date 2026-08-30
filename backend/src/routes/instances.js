@@ -13,6 +13,7 @@ const {
   resubmitInstance,
 } = require('../services/workflowInstanceService');
 const { listMyTasks, getInstanceHistory } = require('../services/dashboardService');
+const { buildInstanceEditConfig } = require('../services/documentEditingService');
 
 const router = express.Router();
 
@@ -115,6 +116,15 @@ router.get('/:id/history', async (req, res, next) => {
   try {
     const history = await getInstanceHistory(req.user.tenantId, req.params.id);
     res.status(200).json(history);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/edit-config', async (req, res, next) => {
+  try {
+    const editConfig = await buildInstanceEditConfig(req.user.tenantId, req.params.id, req.user.userId);
+    res.status(200).json(editConfig);
   } catch (err) {
     next(err);
   }

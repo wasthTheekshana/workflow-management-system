@@ -14,6 +14,7 @@ const adminUsersRouter = require('./routes/admin/users');
 const adminRolesRouter = require('./routes/admin/roles');
 const documentTypesPublicRouter = require('./routes/documentTypes');
 const filesRouter = require('./routes/files');
+const filesCallbackRouter = require('./routes/filesCallback');
 const errorHandler = require('./middleware/errorHandler');
 
 const config = validateEnv();
@@ -47,6 +48,7 @@ app.use('/admin/instances', adminInstancesRouter);
 app.use('/admin/users', adminUsersRouter);
 app.use('/admin/roles', adminRolesRouter);
 app.use('/files', filesRouter);
+app.use('/files/callback', filesCallbackRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

@@ -15,6 +15,9 @@ async function listMyTasks(tenantId, userId) {
   const userRoleIds = (
     await db('user_roles').where({ tenant_id: tenantId, user_id: userId }).select('role_id')
   ).map((row) => row.role_id);
+  const userGroupIds = (
+    await db('user_groups').where({ tenant_id: tenantId, user_id: userId }).select('group_id')
+  ).map((row) => row.group_id);
 
   const assignedToMe = [];
   const waitingOnOthers = [];
@@ -30,7 +33,9 @@ async function listMyTasks(tenantId, userId) {
 
     const eligibleToClaimRole =
       stage.assignee_type === 'role' && !instance.claimed_by && userRoleIds.includes(stage.assignee_role_id);
-    const isMine = canAct(stage, instance, userId) || eligibleToClaimRole;
+    const eligibleToClaimGroup =
+      stage.assignee_type === 'group' && !instance.claimed_by && userGroupIds.includes(stage.assignee_group_id);
+    const isMine = canAct(stage, instance, userId) || eligibleToClaimRole || eligibleToClaimGroup;
 
     if (isMine) {
       assignedToMe.push({ ...instance, currentStage: stage });

@@ -26,8 +26,6 @@ describe('groupService', () => {
   });
 
   afterAll(async () => {
-    await db('workflow_stages').whereIn('tenant_id', [TENANT_ID, OTHER_TENANT_ID]).del();
-    await db('workflow_templates').whereIn('tenant_id', [TENANT_ID, OTHER_TENANT_ID]).del();
     await db('user_groups').where({ tenant_id: TENANT_ID }).del();
     await db('groups').whereIn('tenant_id', [TENANT_ID, OTHER_TENANT_ID]).del();
     await db('users').where({ tenant_id: TENANT_ID }).del();

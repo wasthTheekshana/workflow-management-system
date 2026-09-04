@@ -4,6 +4,11 @@ exports.up = async function up(knex) {
   // DML anywhere in this file references 'group', so it's safe to run
   // together and the value is usable by the next request after this
   // migration commits.
+  // ALTER TYPE ... ADD VALUE inside a transaction requires Postgres 12+.
+  // (Knex wraps this migration in a transaction by default; the new value
+  // is never referenced within this same migration, so PG 12+'s support for
+  // adding-without-using-in-the-same-transaction is sufficient — PG 11 and
+  // earlier would hard-error here.)
   await knex.raw("ALTER TYPE assignee_type ADD VALUE IF NOT EXISTS 'group'");
 
   await knex.schema.alterTable('workflow_stages', (table) => {

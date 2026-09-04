@@ -111,13 +111,15 @@ describe('GET /instances/my-tasks', () => {
 });
 
 describe('GET /instances/my-tasks — group-assigned stage', () => {
-  const G_TENANT_ID = 'e1000000-0000-0000-0000-000000000001';
-  const G_ADMIN_ID = 'e1000000-0000-0000-0000-000000000002';
-  const G_SUBMITTER_ID = 'e1000000-0000-0000-0000-000000000003';
-  const G_MEMBER_ID = 'e1000000-0000-0000-0000-000000000004';
+  const G_TENANT_ID = 'e3000000-0000-0000-0000-000000000001';
+  const G_ADMIN_ID = 'e3000000-0000-0000-0000-000000000002';
+  const G_SUBMITTER_ID = 'e3000000-0000-0000-0000-000000000003';
+  const G_MEMBER_ID = 'e3000000-0000-0000-0000-000000000004';
+  const OTHER_GROUP_MEMBER_ID = 'e3000000-0000-0000-0000-000000000005';
   const gAdminToken = signToken({ sub: G_ADMIN_ID, tenant_id: G_TENANT_ID, is_admin: true });
   const gSubmitterToken = signToken({ sub: G_SUBMITTER_ID, tenant_id: G_TENANT_ID, is_admin: false });
   const gMemberToken = signToken({ sub: G_MEMBER_ID, tenant_id: G_TENANT_ID, is_admin: false });
+  const otherGroupMemberToken = signToken({ sub: OTHER_GROUP_MEMBER_ID, tenant_id: G_TENANT_ID, is_admin: false });
 
   let gInstanceId;
 
@@ -133,6 +135,13 @@ describe('GET /instances/my-tasks — group-assigned stage', () => {
       .ignore();
     const [group] = await db('groups').insert({ tenant_id: G_TENANT_ID, name: 'My Tasks Group' }).returning('id');
     await db('user_groups').insert({ tenant_id: G_TENANT_ID, user_id: G_MEMBER_ID, group_id: group.id });
+
+    const [otherGroup] = await db('groups').insert({ tenant_id: G_TENANT_ID, name: 'Other Group' }).returning('id');
+    await db('users')
+      .insert({ id: OTHER_GROUP_MEMBER_ID, tenant_id: G_TENANT_ID, email: 'gmt-other-member@example.com', password_hash: 'x' })
+      .onConflict('id')
+      .ignore();
+    await db('user_groups').insert({ tenant_id: G_TENANT_ID, user_id: OTHER_GROUP_MEMBER_ID, group_id: otherGroup.id });
 
     const templateFile = await request(app)
       .post('/admin/template-files')
@@ -187,6 +196,12 @@ describe('GET /instances/my-tasks — group-assigned stage', () => {
     const response = await request(app).get('/instances/my-tasks').set('Authorization', `Bearer ${gMemberToken}`);
     expect(response.status).toBe(200);
     expect(response.body.assignedToMe.map((i) => i.id)).toContain(gInstanceId);
+  });
+
+  it('does not show the instance to a member of a different group', async () => {
+    const response = await request(app).get('/instances/my-tasks').set('Authorization', `Bearer ${otherGroupMemberToken}`);
+    expect(response.status).toBe(200);
+    expect(response.body.assignedToMe.map((i) => i.id)).not.toContain(gInstanceId);
   });
 });
 

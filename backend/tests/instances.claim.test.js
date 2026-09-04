@@ -100,10 +100,10 @@ describe('claiming a role-assigned stage', () => {
 });
 
 describe('claiming a group-assigned stage', () => {
-  const G_TENANT_ID = 'c2000000-0000-0000-0000-000000000001';
-  const G_ADMIN_ID = 'c2000000-0000-0000-0000-000000000002';
-  const G_MEMBER_ID = 'c2000000-0000-0000-0000-000000000003';
-  const G_OUTSIDER_ID = 'c2000000-0000-0000-0000-000000000004';
+  const G_TENANT_ID = 'c7000000-0000-0000-0000-000000000001';
+  const G_ADMIN_ID = 'c7000000-0000-0000-0000-000000000002';
+  const G_MEMBER_ID = 'c7000000-0000-0000-0000-000000000003';
+  const G_OUTSIDER_ID = 'c7000000-0000-0000-0000-000000000004';
   const gAdminToken = signToken({ sub: G_ADMIN_ID, tenant_id: G_TENANT_ID, is_admin: true });
   const gMemberToken = signToken({ sub: G_MEMBER_ID, tenant_id: G_TENANT_ID, is_admin: false });
   const gOutsiderToken = signToken({ sub: G_OUTSIDER_ID, tenant_id: G_TENANT_ID, is_admin: false });
@@ -189,6 +189,25 @@ describe('claiming a group-assigned stage', () => {
       .post(`/instances/${gInstanceId}/claim`)
       .set('Authorization', `Bearer ${gMemberToken}`);
     expect(secondClaim.status).toBe(400);
+  });
+
+  it('rejects a claim from a user in a different tenant', async () => {
+    const OTHER_TENANT_ID = 'c7000000-0000-0000-0000-000000000099';
+    const OTHER_USER_ID = 'c7000000-0000-0000-0000-000000000098';
+    await db('tenants').insert({ id: OTHER_TENANT_ID, name: 'Other Tenant' }).onConflict('id').ignore();
+    await db('users')
+      .insert({ id: OTHER_USER_ID, tenant_id: OTHER_TENANT_ID, email: 'other-tenant-claimer@example.com', password_hash: 'x' })
+      .onConflict('id')
+      .ignore();
+    const otherTenantToken = signToken({ sub: OTHER_USER_ID, tenant_id: OTHER_TENANT_ID, is_admin: false });
+
+    const response = await request(app)
+      .post(`/instances/${gInstanceId}/claim`)
+      .set('Authorization', `Bearer ${otherTenantToken}`);
+    expect(response.status).toBe(404);
+
+    await db('users').where({ id: OTHER_USER_ID }).del();
+    await db('tenants').where({ id: OTHER_TENANT_ID }).del();
   });
 });
 

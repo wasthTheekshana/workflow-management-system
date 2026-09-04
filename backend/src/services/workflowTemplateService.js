@@ -26,7 +26,7 @@ async function getWorkflowTemplate(tenantId, workflowTemplateId) {
   return { ...workflowTemplate, stages };
 }
 
-const ALLOWED_ASSIGNEE_TYPES = ['user', 'role'];
+const ALLOWED_ASSIGNEE_TYPES = ['user', 'role', 'group'];
 const ALLOWED_ACTIONS = ['forward', 'send_back', 'reject'];
 
 async function addWorkflowStage(tenantId, workflowTemplateId, input) {
@@ -38,7 +38,7 @@ async function addWorkflowStage(tenantId, workflowTemplateId, input) {
     throw new AppError(404, 'Workflow template not found');
   }
 
-  const { stageOrder, name, assigneeType, assigneeUserId, assigneeRoleId, allowedActions } = input;
+  const { stageOrder, name, assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, allowedActions } = input;
 
   if (!Number.isInteger(stageOrder) || stageOrder < 1) {
     throw new AppError(400, 'stageOrder must be a positive integer');
@@ -54,11 +54,17 @@ async function addWorkflowStage(tenantId, workflowTemplateId, input) {
     if (!user) {
       throw new AppError(400, 'assigneeUserId does not belong to this tenant');
     }
-  } else {
+  } else if (assigneeType === 'role') {
     assertUuid(assigneeRoleId, 'assigneeRoleId');
     const role = await db('roles').where({ tenant_id: tenantId, id: assigneeRoleId }).first();
     if (!role) {
       throw new AppError(400, 'assigneeRoleId does not belong to this tenant');
+    }
+  } else {
+    assertUuid(assigneeGroupId, 'assigneeGroupId');
+    const group = await db('groups').where({ tenant_id: tenantId, id: assigneeGroupId }).first();
+    if (!group) {
+      throw new AppError(400, 'assigneeGroupId does not belong to this tenant');
     }
   }
 
@@ -84,6 +90,7 @@ async function addWorkflowStage(tenantId, workflowTemplateId, input) {
       assignee_type: assigneeType,
       assignee_user_id: assigneeType === 'user' ? assigneeUserId : null,
       assignee_role_id: assigneeType === 'role' ? assigneeRoleId : null,
+      assignee_group_id: assigneeType === 'group' ? assigneeGroupId : null,
       allowed_actions: JSON.stringify(actions),
     })
     .returning('*');

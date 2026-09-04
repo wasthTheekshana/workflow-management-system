@@ -81,18 +81,27 @@ async function claimInstance(tenantId, userId, instanceId) {
   if (instance.status !== 'in_progress') {
     throw new AppError(400, 'Only in-progress instances can be claimed');
   }
-  if (stage.assignee_type !== 'role') {
-    throw new AppError(400, 'The current stage is not role-assigned; claiming does not apply');
+  if (stage.assignee_type !== 'role' && stage.assignee_type !== 'group') {
+    throw new AppError(400, 'The current stage is not role- or group-assigned; claiming does not apply');
   }
   if (instance.claimed_by) {
     throw new AppError(400, 'This instance has already been claimed');
   }
 
-  const hasRole = await db('user_roles')
-    .where({ tenant_id: tenantId, user_id: userId, role_id: stage.assignee_role_id })
-    .first();
-  if (!hasRole) {
-    throw new AppError(403, 'You do not hold the role assigned to this stage');
+  if (stage.assignee_type === 'role') {
+    const hasRole = await db('user_roles')
+      .where({ tenant_id: tenantId, user_id: userId, role_id: stage.assignee_role_id })
+      .first();
+    if (!hasRole) {
+      throw new AppError(403, 'You do not hold the role assigned to this stage');
+    }
+  } else {
+    const isMember = await db('user_groups')
+      .where({ tenant_id: tenantId, user_id: userId, group_id: stage.assignee_group_id })
+      .first();
+    if (!isMember) {
+      throw new AppError(403, 'You are not a member of the group assigned to this stage');
+    }
   }
 
   const [updated] = await db('workflow_instances')

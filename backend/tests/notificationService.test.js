@@ -11,6 +11,7 @@ const INSTANCE_ID = null;
 
 describe('notificationService', () => {
   let roleId;
+  let groupId;
 
   beforeAll(async () => {
     await db('tenants').insert({ id: TENANT_ID, name: 'Notification Test Tenant' }).onConflict('id').ignore();
@@ -27,6 +28,12 @@ describe('notificationService', () => {
       { tenant_id: TENANT_ID, user_id: USER_A, role_id: roleId },
       { tenant_id: TENANT_ID, user_id: USER_B, role_id: roleId },
     ]);
+    const [group] = await db('groups').insert({ tenant_id: TENANT_ID, name: 'Notify Group' }).returning('id');
+    groupId = group.id;
+    await db('user_groups').insert([
+      { tenant_id: TENANT_ID, user_id: USER_A, group_id: groupId },
+      { tenant_id: TENANT_ID, user_id: USER_B, group_id: groupId },
+    ]);
   });
 
   afterEach(async () => {
@@ -35,6 +42,8 @@ describe('notificationService', () => {
 
   afterAll(async () => {
     await db('user_roles').where({ tenant_id: TENANT_ID }).del();
+    await db('user_groups').where({ tenant_id: TENANT_ID }).del();
+    await db('groups').where({ tenant_id: TENANT_ID }).del();
     await db('roles').where({ tenant_id: TENANT_ID }).del();
     await db('users').where({ tenant_id: TENANT_ID }).del();
     await db('tenants').where({ id: TENANT_ID }).del();
@@ -60,6 +69,18 @@ describe('notificationService', () => {
     await notifyStage(TENANT_ID, INSTANCE_ID, 'forwarded', stage, {
       documentTypeName: 'HR Letter',
       stageName: 'Review',
+    });
+
+    const rows = await db('notifications').where({ tenant_id: TENANT_ID }).orderBy('recipient_email');
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.recipient_email)).toEqual(['notif-a@example.com', 'notif-b@example.com']);
+  });
+
+  it('enqueues one notification per member for a group-assigned stage', async () => {
+    const stage = { assignee_type: 'group', assignee_group_id: groupId };
+    await notifyStage(TENANT_ID, INSTANCE_ID, 'assigned', stage, {
+      documentTypeName: 'IT Request',
+      stageName: 'Triage',
     });
 
     const rows = await db('notifications').where({ tenant_id: TENANT_ID }).orderBy('recipient_email');

@@ -12,6 +12,7 @@ const instancesRouter = require('./routes/instances');
 const adminInstancesRouter = require('./routes/admin/instances');
 const adminUsersRouter = require('./routes/admin/users');
 const adminRolesRouter = require('./routes/admin/roles');
+const adminGroupsRouter = require('./routes/admin/groups');
 const documentTypesPublicRouter = require('./routes/documentTypes');
 const filesRouter = require('./routes/files');
 const filesCallbackRouter = require('./routes/filesCallback');
@@ -47,6 +48,7 @@ app.use('/document-types', documentTypesPublicRouter);
 app.use('/admin/instances', adminInstancesRouter);
 app.use('/admin/users', adminUsersRouter);
 app.use('/admin/roles', adminRolesRouter);
+app.use('/admin/groups', adminGroupsRouter);
 app.use('/files', filesRouter);
 app.use('/files/callback', filesCallbackRouter);
 

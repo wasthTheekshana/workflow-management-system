@@ -33,7 +33,7 @@ async function listVisibleGroups(tenantId, userId, isAdmin) {
 
   return db('groups')
     .join('user_groups', 'user_groups.group_id', 'groups.id')
-    .where({ 'user_groups.tenant_id': tenantId, 'user_groups.user_id': userId })
+    .where({ 'groups.tenant_id': tenantId, 'user_groups.tenant_id': tenantId, 'user_groups.user_id': userId })
     .select('groups.id', 'groups.name')
     .orderBy('groups.name');
 }

@@ -50,7 +50,7 @@ describe('/admin/groups', () => {
       .post(`/admin/groups/${groupId}/members`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ user_id: NON_ADMIN_ID });
-    expect(addMemberRes.status).toBe(201);
+    expect(addMemberRes.status).toBe(204);
 
     const detailRes = await request(app).get(`/admin/groups/${groupId}`).set('Authorization', `Bearer ${adminToken}`);
     expect(detailRes.status).toBe(200);

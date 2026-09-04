@@ -69,4 +69,15 @@ describe('groupService', () => {
     const group = await createGroup(OTHER_TENANT_ID, 'Other Tenant Group');
     await expect(getGroupWithMembers(TENANT_ID, group.id)).rejects.toThrow(AppError);
   });
+
+  it('rejects creating a group with a name already used in this tenant', async () => {
+    await createGroup(TENANT_ID, 'Duplicate Name Test Group');
+    await expect(createGroup(TENANT_ID, 'Duplicate Name Test Group')).rejects.toThrow(AppError);
+  });
+
+  it('rejects renaming a group to a name already used by another group in this tenant', async () => {
+    const groupA = await createGroup(TENANT_ID, 'Rename Conflict A');
+    await createGroup(TENANT_ID, 'Rename Conflict B');
+    await expect(renameGroup(TENANT_ID, groupA.id, 'Rename Conflict B')).rejects.toThrow(AppError);
+  });
 });

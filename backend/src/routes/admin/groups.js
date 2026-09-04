@@ -59,7 +59,7 @@ router.delete('/:id', async (req, res, next) => {
 router.post('/:id/members', async (req, res, next) => {
   try {
     await addMember(req.user.tenantId, req.params.id, req.body.user_id);
-    res.status(201).end();
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

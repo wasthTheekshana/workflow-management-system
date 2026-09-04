@@ -15,8 +15,15 @@ async function listGroups(tenantId) {
 
 async function createGroup(tenantId, name) {
   assertRequiredString(name, 'name');
-  const [group] = await db('groups').insert({ tenant_id: tenantId, name }).returning(['id', 'name']);
-  return group;
+  try {
+    const [group] = await db('groups').insert({ tenant_id: tenantId, name }).returning(['id', 'name']);
+    return group;
+  } catch (err) {
+    if (err.code === '23505') {
+      throw new AppError(400, 'A group with that name already exists');
+    }
+    throw err;
+  }
 }
 
 async function requireGroup(tenantId, groupId) {
@@ -41,11 +48,18 @@ async function getGroupWithMembers(tenantId, groupId) {
 async function renameGroup(tenantId, groupId, name) {
   await requireGroup(tenantId, groupId);
   assertRequiredString(name, 'name');
-  const [updated] = await db('groups')
-    .where({ tenant_id: tenantId, id: groupId })
-    .update({ name })
-    .returning(['id', 'name']);
-  return updated;
+  try {
+    const [updated] = await db('groups')
+      .where({ tenant_id: tenantId, id: groupId })
+      .update({ name })
+      .returning(['id', 'name']);
+    return updated;
+  } catch (err) {
+    if (err.code === '23505') {
+      throw new AppError(400, 'A group with that name already exists');
+    }
+    throw err;
+  }
 }
 
 async function deleteGroup(tenantId, groupId) {

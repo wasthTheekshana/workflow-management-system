@@ -1,4 +1,13 @@
 exports.up = async function up(knex) {
+  // NOTE: this migration runs the backfill UPDATE, the NOT NULL alter, and the
+  // unique index build inside one transaction, which takes an ACCESS EXCLUSIVE
+  // lock on workflow_instances for its duration. Fine at this project's current
+  // scale (dev DB had single-digit row counts when this was written); if this
+  // is ever run against a large production workflow_instances table, split it
+  // into: (1) add the nullable column + trigger only, deploy so new rows
+  // self-populate; (2) backfill existing rows in small batched transactions;
+  // (3) CREATE UNIQUE INDEX CONCURRENTLY, then ADD CONSTRAINT ... USING INDEX;
+  // (4) add a NOT VALID check constraint, VALIDATE it, then SET NOT NULL.
   await knex.schema.createTable('tenant_ticket_counters', (table) => {
     table.uuid('tenant_id').primary().references('id').inTable('tenants').onDelete('CASCADE');
     table.integer('next_number').notNullable().defaultTo(1);
@@ -50,6 +59,10 @@ exports.up = async function up(knex) {
 
   // Seed/advance the per-tenant counters so the next trigger-assigned number
   // continues after whatever was just backfilled.
+  // Depends on the backfill UPDATE above having already run in this same
+  // migration — MAX(ticket_number) here must see every row already numbered,
+  // or this would under-seed the counter and cause duplicate ticket numbers
+  // on the next real insert. Do not reorder these two statements.
   await knex.raw(`
     INSERT INTO tenant_ticket_counters (tenant_id, next_number)
     SELECT tenant_id, MAX(ticket_number) + 1

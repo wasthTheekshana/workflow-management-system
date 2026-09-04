@@ -64,6 +64,12 @@ async function renameGroup(tenantId, groupId, name) {
 
 async function deleteGroup(tenantId, groupId) {
   await requireGroup(tenantId, groupId);
+  const stageUsingGroup = await db('workflow_stages')
+    .where({ tenant_id: tenantId, assignee_group_id: groupId })
+    .first();
+  if (stageUsingGroup) {
+    throw new AppError(409, 'Group is assigned to one or more workflow stages and cannot be deleted');
+  }
   await db('groups').where({ tenant_id: tenantId, id: groupId }).del();
 }
 

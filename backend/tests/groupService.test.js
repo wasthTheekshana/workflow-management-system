@@ -26,6 +26,8 @@ describe('groupService', () => {
   });
 
   afterAll(async () => {
+    await db('workflow_stages').whereIn('tenant_id', [TENANT_ID, OTHER_TENANT_ID]).del();
+    await db('workflow_templates').whereIn('tenant_id', [TENANT_ID, OTHER_TENANT_ID]).del();
     await db('user_groups').where({ tenant_id: TENANT_ID }).del();
     await db('groups').whereIn('tenant_id', [TENANT_ID, OTHER_TENANT_ID]).del();
     await db('users').where({ tenant_id: TENANT_ID }).del();
@@ -79,5 +81,28 @@ describe('groupService', () => {
     const groupA = await createGroup(TENANT_ID, 'Rename Conflict A');
     await createGroup(TENANT_ID, 'Rename Conflict B');
     await expect(renameGroup(TENANT_ID, groupA.id, 'Rename Conflict B')).rejects.toThrow(AppError);
+  });
+
+  it('rejects deleting a group that is still assigned to a workflow stage', async () => {
+    const group = await createGroup(TENANT_ID, 'In-Use Group');
+
+    const [workflowTemplate] = await db('workflow_templates')
+      .insert({ tenant_id: TENANT_ID, name: 'In-Use Workflow' })
+      .returning('id');
+    await db('workflow_stages').insert({
+      tenant_id: TENANT_ID,
+      workflow_template_id: workflowTemplate.id,
+      stage_order: 1,
+      name: 'Review',
+      assignee_type: 'group',
+      assignee_group_id: group.id,
+      allowed_actions: JSON.stringify(['forward', 'send_back', 'reject']),
+    });
+
+    await expect(deleteGroup(TENANT_ID, group.id)).rejects.toThrow(AppError);
+
+    await db('workflow_stages').where({ tenant_id: TENANT_ID, workflow_template_id: workflowTemplate.id }).del();
+    await db('workflow_templates').where({ tenant_id: TENANT_ID, id: workflowTemplate.id }).del();
+    await deleteGroup(TENANT_ID, group.id);
   });
 });

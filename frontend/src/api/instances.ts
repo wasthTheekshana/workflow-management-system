@@ -2,6 +2,7 @@ import { apiFetch, apiFetchBlob } from './client';
 
 export interface WorkflowInstance {
   id: string;
+  ticket_number: number;
   document_type_id: string;
   template_file_version_id: string;
   current_stage_order: number;

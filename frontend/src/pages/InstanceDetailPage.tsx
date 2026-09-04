@@ -145,7 +145,7 @@ export function InstanceDetailPage() {
   return (
     <div className="max-w-2xl">
       <h1 className="mb-1 text-xl font-bold">
-        {history?.documentType.name ?? 'Instance'}
+        WF-{String(instance.ticket_number).padStart(6, '0')} — {history?.documentType.name ?? 'Instance'}
       </h1>
       <p className="mb-6 text-sm text-gray-600">
         Stage: {currentStage.name} — status: {instance.status}

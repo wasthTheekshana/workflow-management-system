@@ -8,7 +8,9 @@ function TaskCard({ task }: { task: TaskListItem }) {
       to={`/instances/${task.id}`}
       className="block rounded border border-gray-200 bg-white p-4 text-sm hover:border-blue-300"
     >
-      <div className="font-medium text-gray-900">{task.document_type_name}</div>
+      <div className="font-medium text-gray-900">
+        WF-{String(task.ticket_number).padStart(6, '0')} — {task.document_type_name}
+      </div>
       <div className="mt-1 text-gray-600">
         {task.currentStage ? `Stage: ${task.currentStage.name}` : null} — status: {task.status}
       </div>

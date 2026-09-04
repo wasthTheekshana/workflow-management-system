@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addWorkflowStage, getWorkflowTemplate } from '../../api/workflowTemplates';
 import { listUsers } from '../../api/users';
 import { listRoles } from '../../api/roles';
+import { listGroups } from '../../api/groups';
 import { ApiError } from '../../api/client';
 
 const ALL_ACTIONS = ['forward', 'send_back', 'reject'] as const;
@@ -19,12 +20,14 @@ export function WorkflowTemplateDetailPage() {
   });
   const { data: users } = useQuery({ queryKey: ['users'], queryFn: listUsers });
   const { data: roles } = useQuery({ queryKey: ['roles'], queryFn: listRoles });
+  const { data: groups } = useQuery({ queryKey: ['groups'], queryFn: listGroups });
 
   const [stageOrder, setStageOrder] = useState(1);
   const [stageName, setStageName] = useState('');
-  const [assigneeType, setAssigneeType] = useState<'user' | 'role'>('user');
+  const [assigneeType, setAssigneeType] = useState<'user' | 'role' | 'group'>('user');
   const [assigneeUserId, setAssigneeUserId] = useState('');
   const [assigneeRoleId, setAssigneeRoleId] = useState('');
+  const [assigneeGroupId, setAssigneeGroupId] = useState('');
   const [allowedActions, setAllowedActions] = useState<string[]>([...ALL_ACTIONS]);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +39,7 @@ export function WorkflowTemplateDetailPage() {
         assigneeType,
         assigneeUserId: assigneeType === 'user' ? assigneeUserId : undefined,
         assigneeRoleId: assigneeType === 'role' ? assigneeRoleId : undefined,
+        assigneeGroupId: assigneeType === 'group' ? assigneeGroupId : undefined,
         allowedActions,
       }),
     onSuccess: () => {
@@ -72,7 +76,13 @@ export function WorkflowTemplateDetailPage() {
             <span className="font-medium">
               {stage.stage_order}. {stage.name}
             </span>{' '}
-            — {stage.assignee_type === 'user' ? 'assigned user' : 'assigned role'} — actions:{' '}
+            —{' '}
+            {stage.assignee_type === 'user'
+              ? 'assigned user'
+              : stage.assignee_type === 'role'
+                ? 'assigned role'
+                : 'assigned group'}{' '}
+            — actions:{' '}
             {stage.allowed_actions.join(', ')}
           </li>
         ))}
@@ -121,6 +131,14 @@ export function WorkflowTemplateDetailPage() {
             />
             Assign to role
           </label>
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={assigneeType === 'group'}
+              onChange={() => setAssigneeType('group')}
+            />
+            Assign to group
+          </label>
         </div>
         {assigneeType === 'user' ? (
           <label className="block text-sm">
@@ -139,7 +157,7 @@ export function WorkflowTemplateDetailPage() {
               ))}
             </select>
           </label>
-        ) : (
+        ) : assigneeType === 'role' ? (
           <label className="block text-sm">
             Role
             <select
@@ -152,6 +170,23 @@ export function WorkflowTemplateDetailPage() {
               {roles?.map((role) => (
                 <option key={role.id} value={role.id}>
                   {role.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="block text-sm">
+            Group
+            <select
+              required
+              value={assigneeGroupId}
+              onChange={(e) => setAssigneeGroupId(e.target.value)}
+              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+            >
+              <option value="">Select a group</option>
+              {groups?.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
                 </option>
               ))}
             </select>

@@ -18,9 +18,10 @@ export interface StageInfo {
   workflow_template_id: string;
   stage_order: number;
   name: string;
-  assignee_type: 'user' | 'role';
+  assignee_type: 'user' | 'role' | 'group';
   assignee_user_id: string | null;
   assignee_role_id: string | null;
+  assignee_group_id: string | null;
   allowed_actions: string[];
 }
 

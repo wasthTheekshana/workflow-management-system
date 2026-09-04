@@ -139,7 +139,9 @@ export function InstanceDetailPage() {
   const userId = decoded?.userId ?? '';
   const isMine = instance.status === 'in_progress' && canActLocally(currentStage, instance, userId);
   const canClaim =
-    instance.status === 'in_progress' && currentStage.assignee_type === 'role' && !instance.claimed_by;
+    instance.status === 'in_progress' &&
+    (currentStage.assignee_type === 'role' || currentStage.assignee_type === 'group') &&
+    !instance.claimed_by;
   const canResubmit = instance.status === 'rejected' && instance.created_by === userId;
 
   return (

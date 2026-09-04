@@ -32,6 +32,9 @@ export function Layout() {
               <NavLink to="/admin/instances" className={linkClass}>
                 All Instances
               </NavLink>
+              <NavLink to="/admin/groups" className={linkClass}>
+                Groups
+              </NavLink>
             </>
           )}
         </div>

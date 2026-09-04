@@ -16,6 +16,8 @@ const adminGroupsRouter = require('./routes/admin/groups');
 const documentTypesPublicRouter = require('./routes/documentTypes');
 const filesRouter = require('./routes/files');
 const filesCallbackRouter = require('./routes/filesCallback');
+const usersRouter = require('./routes/users');
+const groupsRouter = require('./routes/groups');
 const errorHandler = require('./middleware/errorHandler');
 
 const config = validateEnv();
@@ -51,6 +53,8 @@ app.use('/admin/roles', adminRolesRouter);
 app.use('/admin/groups', adminGroupsRouter);
 app.use('/files', filesRouter);
 app.use('/files/callback', filesCallbackRouter);
+app.use('/users', usersRouter);
+app.use('/groups', groupsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

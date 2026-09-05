@@ -33,11 +33,23 @@ async function resolveStageRecipientEmails(tenantId, stage) {
     return user ? [user.email] : [];
   }
 
-  const roleHolders = await db('user_roles')
-    .join('users', 'users.id', 'user_roles.user_id')
-    .where({ 'user_roles.tenant_id': tenantId, 'user_roles.role_id': stage.assignee_role_id })
-    .select('users.email');
-  return roleHolders.map((row) => row.email);
+  if (stage.assignee_type === 'group') {
+    const members = await db('user_groups')
+      .join('users', 'users.id', 'user_groups.user_id')
+      .where({ 'user_groups.tenant_id': tenantId, 'user_groups.group_id': stage.assignee_group_id })
+      .select('users.email');
+    return members.map((row) => row.email);
+  }
+
+  if (stage.assignee_type === 'role') {
+    const roleHolders = await db('user_roles')
+      .join('users', 'users.id', 'user_roles.user_id')
+      .where({ 'user_roles.tenant_id': tenantId, 'user_roles.role_id': stage.assignee_role_id })
+      .select('users.email');
+    return roleHolders.map((row) => row.email);
+  }
+
+  return [];
 }
 
 async function enqueueNotification(tenantId, workflowInstanceId, recipientEmail, subject, body) {

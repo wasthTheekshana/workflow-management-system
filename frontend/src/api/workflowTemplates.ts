@@ -12,9 +12,10 @@ export interface WorkflowStage {
   workflow_template_id: string;
   stage_order: number;
   name: string;
-  assignee_type: 'user' | 'role';
+  assignee_type: 'user' | 'role' | 'group';
   assignee_user_id: string | null;
   assignee_role_id: string | null;
+  assignee_group_id: string | null;
   allowed_actions: string[];
   created_at: string;
 }
@@ -38,9 +39,10 @@ export function createWorkflowTemplate(name: string): Promise<WorkflowTemplate> 
 export interface AddStageInput {
   stageOrder: number;
   name: string;
-  assigneeType: 'user' | 'role';
+  assigneeType: 'user' | 'role' | 'group';
   assigneeUserId?: string;
   assigneeRoleId?: string;
+  assigneeGroupId?: string;
   allowedActions: string[];
 }
 

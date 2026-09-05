@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchBlob } from './client';
+import type { ContentFormat } from './templateFiles';
 
 export interface WorkflowInstance {
   id: string;
@@ -26,6 +27,7 @@ export interface StageInfo {
 
 export interface InstanceWithStage extends WorkflowInstance {
   currentStage: StageInfo;
+  contentFormat: ContentFormat;
 }
 
 export interface TaskListItem extends WorkflowInstance {
@@ -43,7 +45,8 @@ export interface InstanceVersion {
   id: string;
   workflow_instance_id: string;
   version_number: number;
-  file_path: string;
+  file_path: string | null;
+  content: unknown | null;
   uploaded_by: string;
   created_at: string;
 }
@@ -100,6 +103,14 @@ export function uploadInstanceVersion(id: string, file: File): Promise<InstanceV
 
 export function downloadCurrentFile(id: string): Promise<Blob> {
   return apiFetchBlob(`/instances/${id}/current-file`);
+}
+
+export function addInstanceContentVersion(id: string, content: unknown): Promise<InstanceVersion> {
+  return apiFetch(`/instances/${id}/content-versions`, { method: 'POST', body: JSON.stringify({ content }) });
+}
+
+export function getCurrentContent(id: string): Promise<{ content: unknown }> {
+  return apiFetch(`/instances/${id}/current-content`);
 }
 
 export function forwardInstance(id: string, comment?: string): Promise<WorkflowInstance> {

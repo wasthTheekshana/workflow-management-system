@@ -1,9 +1,10 @@
 import { ChangeEvent, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTemplateFile, uploadTemplateFileVersion } from '../../api/templateFiles';
+import { addTemplateFileContentVersion, getTemplateFile, uploadTemplateFileVersion } from '../../api/templateFiles';
 import { getTemplateEditConfig, OnlyOfficeConfig } from '../../api/documentEditing';
 import { OnlineEditor } from '../../components/OnlineEditor';
+import { RichTextEditor } from '../../components/RichTextEditor';
 import { ApiError } from '../../api/client';
 
 export function TemplateFileDetailPage() {
@@ -11,6 +12,7 @@ export function TemplateFileDetailPage() {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [editorConfig, setEditorConfig] = useState<OnlyOfficeConfig | null>(null);
+  const [richTextEditorOpen, setRichTextEditorOpen] = useState(false);
 
   const { data: templateFile, isLoading } = useQuery({
     queryKey: ['templateFile', id],
@@ -33,6 +35,16 @@ export function TemplateFileDetailPage() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not open the editor'),
   });
 
+  const saveContentMutation = useMutation({
+    mutationFn: (content: unknown) => addTemplateFileContentVersion(id!, content),
+    onSuccess: () => {
+      setError(null);
+      setRichTextEditorOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['templateFile', id] });
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to save'),
+  });
+
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -49,26 +61,58 @@ export function TemplateFileDetailPage() {
   if (isLoading) return <p className="text-sm text-gray-500">Loading...</p>;
   if (!templateFile) return <p className="text-sm text-red-700">Template file not found.</p>;
 
+  const isRichText = templateFile.content_format === 'richtext';
+  const latestVersion = templateFile.versions[0];
+
   return (
     <div className="max-w-2xl">
       <h1 className="mb-4 text-xl font-bold">{templateFile.name}</h1>
 
-      {editorConfig ? (
-        <OnlineEditor config={editorConfig} onClose={closeEditor} onError={setError} />
-      ) : (
+      {error && <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+
+      {editorConfig && <OnlineEditor config={editorConfig} onClose={closeEditor} onError={setError} />}
+
+      {richTextEditorOpen && !editorConfig && (
+        <RichTextEditor
+          title={templateFile.name}
+          initialContent={latestVersion?.content ?? ''}
+          editable
+          saving={saveContentMutation.isPending}
+          onSave={(content) => saveContentMutation.mutate(content)}
+          onClose={() => setRichTextEditorOpen(false)}
+        />
+      )}
+
+      {!editorConfig && !richTextEditorOpen && (
         <>
           <div className="mb-6 flex flex-wrap gap-2">
-            <button
-              onClick={() => editConfigMutation.mutate()}
-              disabled={editConfigMutation.isPending || templateFile.versions.length === 0}
-              className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              Edit Online
-            </button>
-            <label className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50">
-              Upload new version
-              <input type="file" onChange={handleFileChange} className="hidden" disabled={uploadMutation.isPending} />
-            </label>
+            {isRichText ? (
+              <button
+                onClick={() => setRichTextEditorOpen(true)}
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+              >
+                Edit
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => editConfigMutation.mutate()}
+                  disabled={editConfigMutation.isPending || templateFile.versions.length === 0}
+                  className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Edit Online
+                </button>
+                <label className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50">
+                  Upload new version
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    disabled={uploadMutation.isPending}
+                  />
+                </label>
+              </>
+            )}
           </div>
 
           <h2 className="mb-2 text-sm font-semibold text-gray-700">Versions</h2>
@@ -84,8 +128,6 @@ export function TemplateFileDetailPage() {
           </ul>
         </>
       )}
-
-      {error && <p className="mt-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
     </div>
   );
 }

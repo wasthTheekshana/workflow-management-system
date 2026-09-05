@@ -2,9 +2,11 @@ import { ChangeEvent, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  addInstanceContentVersion,
   claimInstance,
   downloadCurrentFile,
   forwardInstance,
+  getCurrentContent,
   getInstance,
   getInstanceHistory,
   rejectInstance,
@@ -18,6 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../api/client';
 import { getInstanceEditConfig, OnlyOfficeConfig } from '../api/documentEditing';
 import { OnlineEditor } from '../components/OnlineEditor';
+import { RichTextEditor } from '../components/RichTextEditor';
 
 function canActLocally(stage: StageInfo, instance: WorkflowInstance, userId: string): boolean {
   if (instance.claimed_by) {
@@ -36,6 +39,7 @@ export function InstanceDetailPage() {
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editorConfig, setEditorConfig] = useState<OnlyOfficeConfig | null>(null);
+  const [richTextEditorOpen, setRichTextEditorOpen] = useState(false);
 
   const { data: detail, isLoading } = useQuery({
     queryKey: ['instance', id],
@@ -47,10 +51,17 @@ export function InstanceDetailPage() {
     queryFn: () => getInstanceHistory(id!),
     enabled: Boolean(id),
   });
+  const isRichText = detail?.contentFormat === 'richtext';
+  const { data: currentContent } = useQuery({
+    queryKey: ['instanceContent', id],
+    queryFn: () => getCurrentContent(id!),
+    enabled: Boolean(id) && isRichText,
+  });
 
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ['instance', id] });
     queryClient.invalidateQueries({ queryKey: ['instanceHistory', id] });
+    queryClient.invalidateQueries({ queryKey: ['instanceContent', id] });
     queryClient.invalidateQueries({ queryKey: ['myTasks'] });
   }
 
@@ -117,6 +128,14 @@ export function InstanceDetailPage() {
     },
     onError: (err) => onError(err, 'Could not open the editor'),
   });
+  const saveContentMutation = useMutation({
+    mutationFn: (content: unknown) => addInstanceContentVersion(id!, content),
+    onSuccess: () => {
+      setRichTextEditorOpen(false);
+      invalidateAll();
+    },
+    onError: (err) => onError(err, 'Failed to save'),
+  });
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -155,16 +174,38 @@ export function InstanceDetailPage() {
 
       {editorConfig && <OnlineEditor config={editorConfig} onClose={closeEditor} onError={setError} />}
 
-      {!editorConfig && (
+      {richTextEditorOpen && !editorConfig && (
+        <RichTextEditor
+          title={history?.documentType.name ?? 'Instance'}
+          initialContent={currentContent?.content ?? ''}
+          editable={isMine}
+          saving={saveContentMutation.isPending}
+          onSave={isMine ? (content) => saveContentMutation.mutate(content) : undefined}
+          onClose={() => setRichTextEditorOpen(false)}
+        />
+      )}
+
+      {!editorConfig && !richTextEditorOpen && (
         <>
           <div className="mb-6 flex flex-wrap gap-2">
-            <button
-              onClick={() => downloadMutation.mutate()}
-              disabled={downloadMutation.isPending}
-              className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
-            >
-              Download current file
-            </button>
+            {!isRichText && (
+              <button
+                onClick={() => downloadMutation.mutate()}
+                disabled={downloadMutation.isPending}
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+              >
+                Download current file
+              </button>
+            )}
+
+            {isRichText && (
+              <button
+                onClick={() => setRichTextEditorOpen(true)}
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
+              >
+                View document
+              </button>
+            )}
 
             {canClaim && (
               <button
@@ -176,7 +217,7 @@ export function InstanceDetailPage() {
               </button>
             )}
 
-            {isMine && (
+            {isMine && !isRichText && (
               <>
                 <button
                   onClick={() => editConfigMutation.mutate()}
@@ -195,6 +236,15 @@ export function InstanceDetailPage() {
                   />
                 </label>
               </>
+            )}
+
+            {isMine && isRichText && (
+              <button
+                onClick={() => setRichTextEditorOpen(true)}
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+              >
+                Edit
+              </button>
             )}
 
             {canResubmit && (

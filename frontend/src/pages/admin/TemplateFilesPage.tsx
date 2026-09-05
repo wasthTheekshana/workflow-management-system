@@ -8,14 +8,14 @@ export function TemplateFilesPage() {
   const queryClient = useQueryClient();
   const { data: templateFiles, isLoading } = useQuery({ queryKey: ['templateFiles'], queryFn: listTemplateFiles });
   const [name, setName] = useState('');
-  const [contentFormat, setContentFormat] = useState<ContentFormat>('docx');
+  const [contentFormat, setContentFormat] = useState<ContentFormat>('richtext');
   const [error, setError] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: () => createTemplateFile(name, contentFormat),
     onSuccess: () => {
       setName('');
-      setContentFormat('docx');
+      setContentFormat('richtext');
       queryClient.invalidateQueries({ queryKey: ['templateFiles'] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to create template file'),

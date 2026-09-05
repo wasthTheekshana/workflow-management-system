@@ -2,17 +2,14 @@ import { ChangeEvent, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addTemplateFileContentVersion, getTemplateFile, uploadTemplateFileVersion } from '../../api/templateFiles';
-import { getTemplateEditConfig, OnlyOfficeConfig } from '../../api/documentEditing';
-import { OnlineEditor } from '../../components/OnlineEditor';
-import { RichTextEditor } from '../../components/RichTextEditor';
+import { getTemplateEditConfig } from '../../api/documentEditing';
+import { DocumentPanel } from '../../components/DocumentPanel';
 import { ApiError } from '../../api/client';
 
 export function TemplateFileDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [editorConfig, setEditorConfig] = useState<OnlyOfficeConfig | null>(null);
-  const [richTextEditorOpen, setRichTextEditorOpen] = useState(false);
 
   const { data: templateFile, isLoading } = useQuery({
     queryKey: ['templateFile', id],
@@ -20,27 +17,21 @@ export function TemplateFileDetailPage() {
     enabled: Boolean(id),
   });
 
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ['templateFile', id] });
+  }
+
   const uploadMutation = useMutation({
     mutationFn: (file: File) => uploadTemplateFileVersion(id!, file),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templateFile', id] }),
+    onSuccess: invalidate,
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Upload failed'),
-  });
-
-  const editConfigMutation = useMutation({
-    mutationFn: () => getTemplateEditConfig(id!),
-    onSuccess: (config) => {
-      setError(null);
-      setEditorConfig(config);
-    },
-    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not open the editor'),
   });
 
   const saveContentMutation = useMutation({
     mutationFn: (content: unknown) => addTemplateFileContentVersion(id!, content),
     onSuccess: () => {
       setError(null);
-      setRichTextEditorOpen(false);
-      queryClient.invalidateQueries({ queryKey: ['templateFile', id] });
+      invalidate();
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to save'),
   });
@@ -53,11 +44,6 @@ export function TemplateFileDetailPage() {
     event.target.value = '';
   }
 
-  function closeEditor() {
-    setEditorConfig(null);
-    queryClient.invalidateQueries({ queryKey: ['templateFile', id] });
-  }
-
   if (isLoading) return <p className="text-sm text-gray-500">Loading...</p>;
   if (!templateFile) return <p className="text-sm text-red-700">Template file not found.</p>;
 
@@ -65,69 +51,67 @@ export function TemplateFileDetailPage() {
   const latestVersion = templateFile.versions[0];
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="mb-4 text-xl font-bold">{templateFile.name}</h1>
+    <div className="flex flex-col gap-6 lg:flex-row">
+      <div className="max-w-2xl flex-shrink-0 lg:w-[28rem]">
+        <h1 className="mb-4 text-xl font-bold">{templateFile.name}</h1>
 
-      {error && <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
+        {error && <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
 
-      {editorConfig && <OnlineEditor config={editorConfig} onClose={closeEditor} onError={setError} />}
-
-      {richTextEditorOpen && !editorConfig && (
-        <RichTextEditor
-          title={templateFile.name}
-          initialContent={latestVersion?.content ?? ''}
-          editable
-          saving={saveContentMutation.isPending}
-          onSave={(content) => saveContentMutation.mutate(content)}
-          onClose={() => setRichTextEditorOpen(false)}
-        />
-      )}
-
-      {!editorConfig && !richTextEditorOpen && (
-        <>
-          <div className="mb-6 flex flex-wrap gap-2">
-            {isRichText ? (
+        <div className="mb-6 flex flex-wrap gap-2">
+          {!isRichText && (
+            <>
+              <label className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50">
+                Upload new version
+                <input
+                  type="file"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  disabled={uploadMutation.isPending}
+                />
+              </label>
               <button
-                onClick={() => setRichTextEditorOpen(true)}
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                onClick={invalidate}
+                className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
               >
-                Edit
+                Refresh status
               </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => editConfigMutation.mutate()}
-                  disabled={editConfigMutation.isPending || templateFile.versions.length === 0}
-                  className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Edit Online
-                </button>
-                <label className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50">
-                  Upload new version
-                  <input
-                    type="file"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    disabled={uploadMutation.isPending}
-                  />
-                </label>
-              </>
-            )}
-          </div>
+            </>
+          )}
+        </div>
 
-          <h2 className="mb-2 text-sm font-semibold text-gray-700">Versions</h2>
-          <ul className="divide-y divide-gray-200 rounded border border-gray-200 bg-white">
-            {templateFile.versions.map((version) => (
-              <li key={version.id} className="px-4 py-3 text-sm">
-                v{version.version_number} — uploaded {new Date(version.created_at).toLocaleString()}
-              </li>
-            ))}
-            {templateFile.versions.length === 0 && (
-              <li className="px-4 py-3 text-sm text-gray-500">No versions uploaded yet.</li>
-            )}
-          </ul>
-        </>
-      )}
+        <h2 className="mb-2 text-sm font-semibold text-gray-700">Versions</h2>
+        <ul className="divide-y divide-gray-200 rounded border border-gray-200 bg-white">
+          {templateFile.versions.map((version) => (
+            <li key={version.id} className="px-4 py-3 text-sm">
+              v{version.version_number} — uploaded {new Date(version.created_at).toLocaleString()}
+            </li>
+          ))}
+          {templateFile.versions.length === 0 && (
+            <li className="px-4 py-3 text-sm text-gray-500">No versions uploaded yet.</li>
+          )}
+        </ul>
+      </div>
+
+      <div className="min-h-[70vh] flex-1">
+        <DocumentPanel
+          format={templateFile.content_format}
+          title={templateFile.name}
+          richText={
+            isRichText
+              ? {
+                  content: latestVersion?.content ?? '',
+                  editable: true,
+                  saving: saveContentMutation.isPending,
+                  onSave: (content) => saveContentMutation.mutate(content),
+                }
+              : undefined
+          }
+          docxQueryKey={['templateEditConfig', id]}
+          fetchDocxConfig={() => getTemplateEditConfig(id!)}
+          docxEnabled={templateFile.versions.length > 0}
+          onError={setError}
+        />
+      </div>
     </div>
   );
 }

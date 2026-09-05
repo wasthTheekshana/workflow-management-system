@@ -8,10 +8,9 @@ interface RichTextEditorProps {
   editable: boolean;
   saving?: boolean;
   onSave?: (content: unknown) => void;
-  onClose: () => void;
 }
 
-export function RichTextEditor({ title, initialContent, editable, saving, onSave, onClose }: RichTextEditorProps) {
+export function RichTextEditor({ title, initialContent, editable, saving, onSave }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [StarterKit],
     content: (initialContent as object) ?? '',
@@ -29,25 +28,20 @@ export function RichTextEditor({ title, initialContent, editable, saving, onSave
   }
 
   return (
-    <div className="rounded border border-gray-200 bg-white">
+    <div className="flex h-full flex-col rounded border border-gray-200 bg-white">
       <div className="flex items-center justify-between border-b px-4 py-2">
         <span className="text-sm font-medium">{editable ? 'Editing' : 'Viewing'}: {title}</span>
-        <div className="flex gap-2">
-          {editable && onSave && (
-            <button
-              onClick={() => onSave(editor.getJSON())}
-              disabled={saving}
-              className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          )}
-          <button onClick={onClose} className="text-sm text-gray-600 hover:text-gray-900">
-            Close
+        {editable && onSave && (
+          <button
+            onClick={() => onSave(editor.getJSON())}
+            disabled={saving}
+            className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"
+          >
+            {saving ? 'Saving...' : 'Save'}
           </button>
-        </div>
+        )}
       </div>
-      <div className="prose max-w-none p-4" style={{ minHeight: '60vh' }}>
+      <div className="prose max-w-none flex-1 overflow-auto p-4">
         <EditorContent editor={editor} />
       </div>
     </div>

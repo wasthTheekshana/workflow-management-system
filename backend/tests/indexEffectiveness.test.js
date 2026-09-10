@@ -55,6 +55,9 @@ describe('index effectiveness under realistic volume', () => {
     const templateFileVersionId = (
       await db('template_file_versions').where({ tenant_id: TENANT_ID }).first()
     ).id;
+    const workflowTemplateId = (
+      await db('document_types').where({ tenant_id: TENANT_ID, id: documentTypeId }).first()
+    ).workflow_template_id;
 
     // Bulk-seed workflow_instances: mostly 'completed'/'rejected' so
     // 'in_progress' is a selective minority — matching a real tenant
@@ -62,13 +65,13 @@ describe('index effectiveness under realistic volume', () => {
     await db.raw(
       `
       INSERT INTO workflow_instances
-        (tenant_id, document_type_id, template_file_version_id, current_stage_order, status, created_by, created_at, updated_at)
-      SELECT ?, ?, ?, 1,
+        (tenant_id, document_type_id, workflow_template_id, template_file_version_id, current_stage_order, status, created_by, created_at, updated_at)
+      SELECT ?, ?, ?, ?, 1,
         (ARRAY['completed', 'rejected', 'completed', 'rejected', 'in_progress'])[1 + (s % 5)],
         ?, now(), now()
       FROM generate_series(1, ?) s
       `,
-      [TENANT_ID, documentTypeId, templateFileVersionId, ADMIN_ID, ROW_COUNT],
+      [TENANT_ID, documentTypeId, workflowTemplateId, templateFileVersionId, ADMIN_ID, ROW_COUNT],
     );
     await db.raw('ANALYZE workflow_instances');
 

@@ -60,6 +60,7 @@ async function startInstance(tenantId, userId, documentTypeId) {
     .insert({
       tenant_id: tenantId,
       document_type_id: documentTypeId,
+      workflow_template_id: documentType.workflow_template_id,
       template_file_version_id: latestTemplateVersion.id,
       current_stage_order: 1,
       status: 'in_progress',
@@ -372,7 +373,7 @@ async function rejectInstance(tenantId, userId, instanceId, comment) {
 }
 
 async function resubmitInstance(tenantId, userId, instanceId) {
-  const { instance } = await getInstanceDetail(tenantId, instanceId);
+  const { instance, documentType } = await getInstanceDetail(tenantId, instanceId);
 
   if (instance.status !== 'rejected') {
     throw new AppError(400, 'Only rejected instances can be resubmitted');
@@ -385,6 +386,7 @@ async function resubmitInstance(tenantId, userId, instanceId) {
     .insert({
       tenant_id: tenantId,
       document_type_id: instance.document_type_id,
+      workflow_template_id: documentType.workflow_template_id,
       template_file_version_id: instance.template_file_version_id,
       current_stage_order: 1,
       status: 'in_progress',

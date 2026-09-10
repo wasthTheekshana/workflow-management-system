@@ -5,6 +5,7 @@ import {
   deleteDocumentType,
   listDocumentTypes,
   updateDocumentType,
+  WorkflowMode,
 } from '../../api/documentTypes';
 import { listTemplateFiles } from '../../api/templateFiles';
 import { listWorkflowTemplates } from '../../api/workflowTemplates';
@@ -18,6 +19,7 @@ export function DocumentTypesPage() {
 
   const [name, setName] = useState('');
   const [templateFileId, setTemplateFileId] = useState('');
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>('predefined');
   const [workflowTemplateId, setWorkflowTemplateId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -28,10 +30,17 @@ export function DocumentTypesPage() {
   }
 
   const createMutation = useMutation({
-    mutationFn: createDocumentType,
+    mutationFn: () =>
+      createDocumentType({
+        name,
+        templateFileId,
+        workflowMode,
+        workflowTemplateId: workflowMode === 'predefined' ? workflowTemplateId : undefined,
+      }),
     onSuccess: () => {
       setName('');
       setTemplateFileId('');
+      setWorkflowMode('predefined');
       setWorkflowTemplateId('');
       invalidate();
     },
@@ -56,7 +65,7 @@ export function DocumentTypesPage() {
   function handleCreate(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    createMutation.mutate({ name, templateFileId, workflowTemplateId });
+    createMutation.mutate();
   }
 
   function startEditing(id: string, currentName: string) {
@@ -99,22 +108,38 @@ export function DocumentTypesPage() {
             ))}
           </select>
         </label>
-        <label className="block text-sm">
-          Workflow template
-          <select
-            required
-            value={workflowTemplateId}
-            onChange={(e) => setWorkflowTemplateId(e.target.value)}
-            className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-          >
-            <option value="">Select a workflow template</option>
-            {workflowTemplates?.map((wt) => (
-              <option key={wt.id} value={wt.id}>
-                {wt.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex gap-4 text-sm">
+          <label className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={workflowMode === 'predefined'}
+              onChange={() => setWorkflowMode('predefined')}
+            />
+            Predefined workflow
+          </label>
+          <label className="flex items-center gap-1">
+            <input type="radio" checked={workflowMode === 'adhoc'} onChange={() => setWorkflowMode('adhoc')} />
+            Users define the workflow when they start it
+          </label>
+        </div>
+        {workflowMode === 'predefined' && (
+          <label className="block text-sm">
+            Workflow template
+            <select
+              required
+              value={workflowTemplateId}
+              onChange={(e) => setWorkflowTemplateId(e.target.value)}
+              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+            >
+              <option value="">Select a workflow template</option>
+              {workflowTemplates?.map((wt) => (
+                <option key={wt.id} value={wt.id}>
+                  {wt.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {error && <p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
         <button
           type="submit"
@@ -137,7 +162,12 @@ export function DocumentTypesPage() {
                 className="mr-2 flex-1 rounded border border-gray-300 px-2 py-1"
               />
             ) : (
-              <span>{documentType.name}</span>
+              <span>
+                {documentType.name}{' '}
+                <span className="text-xs text-gray-500">
+                  ({documentType.workflow_mode === 'adhoc' ? 'ad-hoc' : 'predefined'})
+                </span>
+              </span>
             )}
             <span className="flex gap-3">
               {editingId === documentType.id ? (

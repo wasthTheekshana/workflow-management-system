@@ -9,7 +9,6 @@ async function listMyTasks(tenantId, userId) {
     .select(
       'workflow_instances.*',
       'document_types.name as document_type_name',
-      'document_types.workflow_template_id',
     );
 
   const userRoleIds = (

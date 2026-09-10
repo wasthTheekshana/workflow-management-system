@@ -32,7 +32,7 @@ router.get('/my-tasks', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const instance = await startInstance(req.user.tenantId, req.user.userId, req.body.documentTypeId);
+    const instance = await startInstance(req.user.tenantId, req.user.userId, req.body.documentTypeId, req.body.stages);
     res.status(201).json(instance);
   } catch (err) {
     next(err);

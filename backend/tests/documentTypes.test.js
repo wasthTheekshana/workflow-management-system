@@ -82,4 +82,30 @@ describe('document types admin API', () => {
       });
     expect(response.status).toBe(400);
   });
+
+  it('creates an ad-hoc document type with no workflow template', async () => {
+    const response = await request(app)
+      .post('/admin/document-types')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Ad-hoc Memo', templateFileId, workflowMode: 'adhoc' });
+    expect(response.status).toBe(201);
+    expect(response.body.workflow_mode).toBe('adhoc');
+    expect(response.body.workflow_template_id).toBeNull();
+  });
+
+  it('rejects a predefined document type with no workflow template', async () => {
+    const response = await request(app)
+      .post('/admin/document-types')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Broken Predefined', templateFileId });
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects an ad-hoc document type that also supplies a workflow template', async () => {
+    const response = await request(app)
+      .post('/admin/document-types')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Broken Adhoc', templateFileId, workflowMode: 'adhoc', workflowTemplateId });
+    expect(response.status).toBe(400);
+  });
 });

@@ -4,6 +4,7 @@ const { assertUuid, assertRequiredString } = require('../utils/validation');
 
 const DEFAULT_ALLOWED_EXTENSIONS = ['docx'];
 const DEFAULT_MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+const WORKFLOW_MODES = ['predefined', 'adhoc'];
 
 async function assertBelongsToTenant(tenantId, table, id, label) {
   assertUuid(id, label);
@@ -14,17 +15,30 @@ async function assertBelongsToTenant(tenantId, table, id, label) {
 }
 
 async function createDocumentType(tenantId, input) {
-  const { name, templateFileId, workflowTemplateId, allowedExtensions, maxUploadSizeBytes } = input;
+  const { name, templateFileId, workflowMode, workflowTemplateId, allowedExtensions, maxUploadSizeBytes } = input;
   assertRequiredString(name, 'name');
   await assertBelongsToTenant(tenantId, 'template_files', templateFileId, 'templateFileId');
-  await assertBelongsToTenant(tenantId, 'workflow_templates', workflowTemplateId, 'workflowTemplateId');
+
+  const mode = workflowMode === undefined ? 'predefined' : workflowMode;
+  if (!WORKFLOW_MODES.includes(mode)) {
+    throw new AppError(400, `workflowMode must be one of: ${WORKFLOW_MODES.join(', ')}`);
+  }
+
+  let resolvedWorkflowTemplateId = null;
+  if (mode === 'predefined') {
+    await assertBelongsToTenant(tenantId, 'workflow_templates', workflowTemplateId, 'workflowTemplateId');
+    resolvedWorkflowTemplateId = workflowTemplateId;
+  } else if (workflowTemplateId !== undefined && workflowTemplateId !== null) {
+    throw new AppError(400, 'workflowTemplateId must not be provided when workflowMode is "adhoc"');
+  }
 
   const [documentType] = await db('document_types')
     .insert({
       tenant_id: tenantId,
       name,
       template_file_id: templateFileId,
-      workflow_template_id: workflowTemplateId,
+      workflow_mode: mode,
+      workflow_template_id: resolvedWorkflowTemplateId,
       allowed_extensions: JSON.stringify(
         Array.isArray(allowedExtensions) && allowedExtensions.length > 0
           ? allowedExtensions

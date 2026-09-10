@@ -5,6 +5,7 @@ export interface WorkflowInstance {
   id: string;
   ticket_number: number;
   document_type_id: string;
+  workflow_template_id: string;
   template_file_version_id: string;
   current_stage_order: number;
   status: 'in_progress' | 'completed' | 'rejected';
@@ -74,6 +75,13 @@ export interface InstanceHistory {
 export interface StartableDocumentType {
   id: string;
   name: string;
+  workflow_mode: 'predefined' | 'adhoc';
+}
+
+export interface AdhocStageInput {
+  name: string;
+  assigneeType: 'user' | 'group';
+  assigneeId: string;
 }
 
 export function getMyTasks(): Promise<MyTasksResponse> {
@@ -84,8 +92,8 @@ export function listStartableDocumentTypes(): Promise<StartableDocumentType[]> {
   return apiFetch('/document-types');
 }
 
-export function startInstance(documentTypeId: string): Promise<WorkflowInstance> {
-  return apiFetch('/instances', { method: 'POST', body: JSON.stringify({ documentTypeId }) });
+export function startInstance(documentTypeId: string, stages?: AdhocStageInput[]): Promise<WorkflowInstance> {
+  return apiFetch('/instances', { method: 'POST', body: JSON.stringify({ documentTypeId, stages }) });
 }
 
 export function getInstance(id: string): Promise<InstanceWithStage> {

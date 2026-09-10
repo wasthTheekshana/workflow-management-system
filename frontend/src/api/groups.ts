@@ -43,3 +43,12 @@ export function addGroupMember(id: string, userId: string): Promise<void> {
 export function removeGroupMember(id: string, userId: string): Promise<void> {
   return apiFetch(`/admin/groups/${id}/members/${userId}`, { method: 'DELETE' });
 }
+
+export interface VisibleGroup {
+  id: string;
+  name: string;
+}
+
+export function listVisibleGroups(): Promise<VisibleGroup[]> {
+  return apiFetch('/groups/visible');
+}

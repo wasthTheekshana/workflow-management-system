@@ -1,10 +1,13 @@
 import { apiFetch } from './client';
 
+export type WorkflowMode = 'predefined' | 'adhoc';
+
 export interface DocumentType {
   id: string;
   name: string;
   template_file_id: string;
-  workflow_template_id: string;
+  workflow_mode: WorkflowMode;
+  workflow_template_id: string | null;
   allowed_extensions: string[];
   max_upload_size_bytes: number;
   created_at: string;
@@ -14,7 +17,8 @@ export interface DocumentType {
 export interface DocumentTypeInput {
   name: string;
   templateFileId: string;
-  workflowTemplateId: string;
+  workflowMode?: WorkflowMode;
+  workflowTemplateId?: string;
   allowedExtensions?: string[];
   maxUploadSizeBytes?: number;
 }

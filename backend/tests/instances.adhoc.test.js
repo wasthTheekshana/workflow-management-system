@@ -16,6 +16,7 @@ const validDocxBuffer = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Bu
 
 describe('ad-hoc workflow instances', () => {
   let adhocDocumentTypeId;
+  let predefinedDocumentTypeId;
   let groupId;
 
   beforeAll(async () => {
@@ -54,6 +55,24 @@ describe('ad-hoc workflow instances', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'Adhoc Memo', templateFileId: templateFile.body.id, workflowMode: 'adhoc' });
     adhocDocumentTypeId = documentType.body.id;
+
+    const predefinedWorkflowTemplate = await request(app)
+      .post('/admin/workflow-templates')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Predefined Memo Approval' });
+    await request(app)
+      .post(`/admin/workflow-templates/${predefinedWorkflowTemplate.body.id}/stages`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ stageOrder: 1, name: 'Draft', assigneeType: 'user', assigneeUserId: REVIEWER_ID });
+    const predefinedDocumentType = await request(app)
+      .post('/admin/document-types')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Predefined Memo',
+        templateFileId: templateFile.body.id,
+        workflowTemplateId: predefinedWorkflowTemplate.body.id,
+      });
+    predefinedDocumentTypeId = predefinedDocumentType.body.id;
   });
 
   afterAll(async () => {
@@ -78,6 +97,7 @@ describe('ad-hoc workflow instances', () => {
       .set('Authorization', `Bearer ${reviewerToken}`)
       .send({ documentTypeId: adhocDocumentTypeId });
     expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/stages must be a non-empty array/);
   });
 
   it('rejects a stage assigneeId that does not belong to the tenant', async () => {
@@ -89,6 +109,19 @@ describe('ad-hoc workflow instances', () => {
         stages: [{ name: 'Review', assigneeType: 'user', assigneeId: '00000000-0000-0000-0000-000000000099' }],
       });
     expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/does not belong to this tenant/);
+  });
+
+  it('rejects stages supplied for a predefined-workflow document type', async () => {
+    const response = await request(app)
+      .post('/instances')
+      .set('Authorization', `Bearer ${reviewerToken}`)
+      .send({
+        documentTypeId: predefinedDocumentTypeId,
+        stages: [{ name: 'Review', assigneeType: 'user', assigneeId: REVIEWER_ID }],
+      });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/stages must not be provided/);
   });
 
   it('builds a private workflow template and progresses through it like a predefined one', async () => {

@@ -67,8 +67,8 @@ describe('ticket numbers', () => {
   });
 
   it('assigns sequential ticket numbers within a tenant', async () => {
-    const first = await startInstance(TENANT_ID, USER_ID, documentTypeId);
-    const second = await startInstance(TENANT_ID, USER_ID, documentTypeId);
+    const first = await startInstance(TENANT_ID, USER_ID, false, documentTypeId);
+    const second = await startInstance(TENANT_ID, USER_ID, false, documentTypeId);
     expect(typeof first.ticket_number).toBe('number');
     expect(second.ticket_number).toBe(first.ticket_number + 1);
   });

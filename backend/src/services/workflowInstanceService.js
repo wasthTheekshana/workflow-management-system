@@ -6,14 +6,20 @@ const { canAct } = require('../utils/workflowAuthorization');
 const { assertAllowedUpload } = require('../utils/fileValidation');
 const { saveUploadedFile, STORAGE_ROOT } = require('./fileStorageService');
 const { notifyStage, notifyUser } = require('./notificationService');
+const { listVisibleUsers, listVisibleGroups } = require('./visibilityService');
 
 const ADHOC_ASSIGNEE_TYPES = ['user', 'group'];
 const ADHOC_DEFAULT_ALLOWED_ACTIONS = ['forward', 'send_back', 'reject'];
 
-async function createAdhocWorkflowTemplate(tenantId, documentType, stages) {
+async function createAdhocWorkflowTemplate(trx, tenantId, userId, isAdmin, documentType, stages) {
   if (!Array.isArray(stages) || stages.length === 0) {
     throw new AppError(400, 'stages must be a non-empty array for an ad-hoc document type');
   }
+
+  const visibleUsers = await listVisibleUsers(tenantId, userId, isAdmin);
+  const visibleUserIds = new Set(visibleUsers.map((u) => u.id));
+  const visibleGroups = await listVisibleGroups(tenantId, userId, isAdmin);
+  const visibleGroupIds = new Set(visibleGroups.map((g) => g.id));
 
   const validatedStages = [];
   for (const rawStage of stages) {
@@ -23,37 +29,35 @@ async function createAdhocWorkflowTemplate(tenantId, documentType, stages) {
       throw new AppError(400, `stages[].assigneeType must be one of: ${ADHOC_ASSIGNEE_TYPES.join(', ')}`);
     }
     assertUuid(stage.assigneeId, 'stages[].assigneeId');
-    const table = stage.assigneeType === 'user' ? 'users' : 'groups';
-    const row = await db(table).where({ tenant_id: tenantId, id: stage.assigneeId }).first();
-    if (!row) {
-      throw new AppError(400, `stages[].assigneeId does not belong to this tenant (${stage.assigneeType})`);
+    const visibleIds = stage.assigneeType === 'user' ? visibleUserIds : visibleGroupIds;
+    if (!visibleIds.has(stage.assigneeId)) {
+      throw new AppError(400, `stages[].assigneeId is not visible to you (${stage.assigneeType})`);
     }
-    validatedStages.push({ name: stage.name, assigneeType: stage.assigneeType, assigneeId: stage.assigneeId });
+    validatedStages.push({ name: stage.name.trim(), assigneeType: stage.assigneeType, assigneeId: stage.assigneeId });
   }
 
-  return db.transaction(async (trx) => {
-    const [workflowTemplate] = await trx('workflow_templates')
-      .insert({
-        tenant_id: tenantId,
-        name: `${documentType.name} (ad-hoc, started ${new Date().toISOString()})`,
-      })
-      .returning('*');
+  const [workflowTemplate] = await trx('workflow_templates')
+    .insert({
+      tenant_id: tenantId,
+      name: `${documentType.name} (ad-hoc, started ${new Date().toISOString()})`,
+      is_adhoc: true,
+    })
+    .returning('*');
 
-    await trx('workflow_stages').insert(
-      validatedStages.map((stage, index) => ({
-        tenant_id: tenantId,
-        workflow_template_id: workflowTemplate.id,
-        stage_order: index + 1,
-        name: stage.name,
-        assignee_type: stage.assigneeType,
-        assignee_user_id: stage.assigneeType === 'user' ? stage.assigneeId : null,
-        assignee_group_id: stage.assigneeType === 'group' ? stage.assigneeId : null,
-        allowed_actions: JSON.stringify(ADHOC_DEFAULT_ALLOWED_ACTIONS),
-      })),
-    );
+  await trx('workflow_stages').insert(
+    validatedStages.map((stage, index) => ({
+      tenant_id: tenantId,
+      workflow_template_id: workflowTemplate.id,
+      stage_order: index + 1,
+      name: stage.name,
+      assignee_type: stage.assigneeType,
+      assignee_user_id: stage.assigneeType === 'user' ? stage.assigneeId : null,
+      assignee_group_id: stage.assigneeType === 'group' ? stage.assigneeId : null,
+      allowed_actions: JSON.stringify(ADHOC_DEFAULT_ALLOWED_ACTIONS),
+    })),
+  );
 
-    return workflowTemplate.id;
-  });
+  return workflowTemplate.id;
 }
 
 async function getInstanceDetail(tenantId, instanceId) {
@@ -83,7 +87,7 @@ async function getInstanceDetail(tenantId, instanceId) {
   return { instance, documentType, stage };
 }
 
-async function startInstance(tenantId, userId, documentTypeId, stages) {
+async function startInstance(tenantId, userId, isAdmin, documentTypeId, stages) {
   assertUuid(documentTypeId, 'documentTypeId');
   const documentType = await db('document_types').where({ tenant_id: tenantId, id: documentTypeId }).first();
   if (!documentType) {
@@ -98,34 +102,39 @@ async function startInstance(tenantId, userId, documentTypeId, stages) {
     throw new AppError(400, 'The linked template file has no uploaded versions yet');
   }
 
-  let workflowTemplateId;
-  if (documentType.workflow_mode === 'adhoc') {
-    workflowTemplateId = await createAdhocWorkflowTemplate(tenantId, documentType, stages);
-  } else {
-    if (stages !== undefined) {
-      throw new AppError(400, 'stages must not be provided for a predefined-workflow document type');
+  if (documentType.workflow_mode !== 'adhoc' && stages !== undefined) {
+    throw new AppError(400, 'stages must not be provided for a predefined-workflow document type');
+  }
+
+  const { instance, firstStage } = await db.transaction(async (trx) => {
+    let workflowTemplateId;
+    if (documentType.workflow_mode === 'adhoc') {
+      workflowTemplateId = await createAdhocWorkflowTemplate(trx, tenantId, userId, isAdmin, documentType, stages);
+    } else {
+      workflowTemplateId = documentType.workflow_template_id;
     }
-    workflowTemplateId = documentType.workflow_template_id;
-  }
 
-  const firstStage = await db('workflow_stages')
-    .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: 1 })
-    .first();
-  if (!firstStage) {
-    throw new AppError(400, 'The linked workflow template has no stages configured yet');
-  }
+    const stage = await trx('workflow_stages')
+      .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: 1 })
+      .first();
+    if (!stage) {
+      throw new AppError(400, 'The linked workflow template has no stages configured yet');
+    }
 
-  const [instance] = await db('workflow_instances')
-    .insert({
-      tenant_id: tenantId,
-      document_type_id: documentTypeId,
-      template_file_version_id: latestTemplateVersion.id,
-      workflow_template_id: workflowTemplateId,
-      current_stage_order: 1,
-      status: 'in_progress',
-      created_by: userId,
-    })
-    .returning('*');
+    const [insertedInstance] = await trx('workflow_instances')
+      .insert({
+        tenant_id: tenantId,
+        document_type_id: documentTypeId,
+        template_file_version_id: latestTemplateVersion.id,
+        workflow_template_id: workflowTemplateId,
+        current_stage_order: 1,
+        status: 'in_progress',
+        created_by: userId,
+      })
+      .returning('*');
+
+    return { instance: insertedInstance, firstStage: stage };
+  });
 
   await notifyStage(tenantId, instance.id, 'assigned', firstStage, {
     documentTypeName: documentType.name,

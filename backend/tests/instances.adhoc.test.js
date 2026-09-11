@@ -18,6 +18,7 @@ describe('ad-hoc workflow instances', () => {
   let adhocDocumentTypeId;
   let predefinedDocumentTypeId;
   let groupId;
+  const adhocTemplateIds = [];
 
   beforeAll(async () => {
     await db('tenants').insert({ id: TENANT_ID, name: 'Adhoc Test Tenant' }).onConflict('id').ignore();
@@ -40,6 +41,12 @@ describe('ad-hoc workflow instances', () => {
       .post(`/admin/groups/${groupId}/members`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ user_id: GROUP_MEMBER_ID });
+    // The reviewer must share the group to see it (and its members) in their
+    // visible pool, which is what ad-hoc stage assignment is validated against.
+    await request(app)
+      .post(`/admin/groups/${groupId}/members`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ user_id: REVIEWER_ID });
 
     const templateFile = await request(app)
       .post('/admin/template-files')
@@ -109,7 +116,24 @@ describe('ad-hoc workflow instances', () => {
         stages: [{ name: 'Review', assigneeType: 'user', assigneeId: '00000000-0000-0000-0000-000000000099' }],
       });
     expect(response.status).toBe(400);
-    expect(response.body.error).toMatch(/does not belong to this tenant/);
+    expect(response.body.error).toMatch(/is not visible to you/);
+  });
+
+  it('rejects a stage assigned to a tenant user outside the caller\'s visibility scope', async () => {
+    // OUTSIDER_ID is in the same tenant but shares no group with the reviewer,
+    // so listVisibleUsers never returns them and the assignment must be refused.
+    const response = await request(app)
+      .post('/instances')
+      .set('Authorization', `Bearer ${reviewerToken}`)
+      .send({
+        documentTypeId: adhocDocumentTypeId,
+        stages: [{ name: 'Review', assigneeType: 'user', assigneeId: OUTSIDER_ID }],
+      });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/is not visible to you/);
+
+    const orphanTemplates = await db('workflow_templates').where({ tenant_id: TENANT_ID, is_adhoc: true });
+    expect(orphanTemplates.length).toBe(adhocTemplateIds.length);
   });
 
   it('rejects stages supplied for a predefined-workflow document type', async () => {
@@ -138,6 +162,7 @@ describe('ad-hoc workflow instances', () => {
     expect(startResponse.status).toBe(201);
     const instanceId = startResponse.body.id;
     expect(startResponse.body.workflow_template_id).toBeTruthy();
+    adhocTemplateIds.push(startResponse.body.workflow_template_id);
 
     const detailResponse = await request(app)
       .get(`/instances/${instanceId}`)
@@ -187,5 +212,20 @@ describe('ad-hoc workflow instances', () => {
     expect(adhocTask).toBeTruthy();
     expect(adhocTask.currentStage).toBeTruthy();
     expect(adhocTask.currentStage.name).toBe('Reviewer sign-off');
+  });
+
+  it('excludes ad-hoc one-off templates from the admin workflow-template list', async () => {
+    expect(adhocTemplateIds.length).toBeGreaterThan(0);
+
+    const listResponse = await request(app)
+      .get('/admin/workflow-templates')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listResponse.status).toBe(200);
+
+    const listedIds = listResponse.body.map((template) => template.id);
+    adhocTemplateIds.forEach((id) => expect(listedIds).not.toContain(id));
+    expect(listResponse.body.every((template) => template.is_adhoc === false)).toBe(true);
+    // The curated predefined template is still listed.
+    expect(listResponse.body.some((template) => template.name === 'Predefined Memo Approval')).toBe(true);
   });
 });

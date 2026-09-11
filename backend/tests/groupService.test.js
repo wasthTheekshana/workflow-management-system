@@ -103,4 +103,28 @@ describe('groupService', () => {
     await db('workflow_templates').where({ tenant_id: TENANT_ID, id: workflowTemplate.id }).del();
     await deleteGroup(TENANT_ID, group.id);
   });
+
+  it('allows deleting a group referenced only by an ad-hoc workflow stage', async () => {
+    const group = await createGroup(TENANT_ID, 'Adhoc-Only Group');
+
+    const [workflowTemplate] = await db('workflow_templates')
+      .insert({ tenant_id: TENANT_ID, name: 'Adhoc One-Off Workflow', is_adhoc: true })
+      .returning('id');
+    await db('workflow_stages').insert({
+      tenant_id: TENANT_ID,
+      workflow_template_id: workflowTemplate.id,
+      stage_order: 1,
+      name: 'Review',
+      assignee_type: 'group',
+      assignee_group_id: group.id,
+      allowed_actions: JSON.stringify(['forward', 'send_back', 'reject']),
+    });
+
+    await expect(deleteGroup(TENANT_ID, group.id)).resolves.toBeUndefined();
+    const afterDelete = await listGroups(TENANT_ID);
+    expect(afterDelete.find((g) => g.id === group.id)).toBeUndefined();
+
+    await db('workflow_stages').where({ tenant_id: TENANT_ID, workflow_template_id: workflowTemplate.id }).del();
+    await db('workflow_templates').where({ tenant_id: TENANT_ID, id: workflowTemplate.id }).del();
+  });
 });

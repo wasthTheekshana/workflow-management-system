@@ -9,7 +9,7 @@ async function createWorkflowTemplate(tenantId, name) {
 }
 
 async function listWorkflowTemplates(tenantId) {
-  return db('workflow_templates').where({ tenant_id: tenantId }).orderBy('created_at', 'desc');
+  return db('workflow_templates').where({ tenant_id: tenantId, is_adhoc: false }).orderBy('created_at', 'desc');
 }
 
 async function getWorkflowTemplate(tenantId, workflowTemplateId) {

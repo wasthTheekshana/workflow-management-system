@@ -64,13 +64,36 @@ async function renameGroup(tenantId, groupId, name) {
 
 async function deleteGroup(tenantId, groupId) {
   await requireGroup(tenantId, groupId);
-  const stageUsingGroup = await db('workflow_stages')
-    .where({ tenant_id: tenantId, assignee_group_id: groupId })
-    .first();
-  if (stageUsingGroup) {
-    throw new AppError(409, 'Group is assigned to one or more workflow stages and cannot be deleted');
-  }
-  await db('groups').where({ tenant_id: tenantId, id: groupId }).del();
+
+  await db.transaction(async (trx) => {
+    const stageUsingGroup = await trx('workflow_stages')
+      .join('workflow_templates', function joinTemplate() {
+        this.on('workflow_templates.tenant_id', '=', 'workflow_stages.tenant_id').andOn(
+          'workflow_templates.id',
+          '=',
+          'workflow_stages.workflow_template_id',
+        );
+      })
+      .where({
+        'workflow_stages.tenant_id': tenantId,
+        'workflow_stages.assignee_group_id': groupId,
+        'workflow_templates.is_adhoc': false,
+      })
+      .first();
+    if (stageUsingGroup) {
+      throw new AppError(409, 'Group is assigned to one or more workflow stages and cannot be deleted');
+    }
+
+    // Any remaining stage rows referencing this group must belong to
+    // ad-hoc (one-off, never-reused) templates, per the check above — null
+    // out the reference so the FK doesn't block deletion; the historical
+    // stage record itself is untouched otherwise.
+    await trx('workflow_stages')
+      .where({ tenant_id: tenantId, assignee_group_id: groupId })
+      .update({ assignee_group_id: null });
+
+    await trx('groups').where({ tenant_id: tenantId, id: groupId }).del();
+  });
 }
 
 async function addMember(tenantId, groupId, userId) {

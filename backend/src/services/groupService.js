@@ -84,6 +84,32 @@ async function deleteGroup(tenantId, groupId) {
       throw new AppError(409, 'Group is assigned to one or more workflow stages and cannot be deleted');
     }
 
+    // Any remaining stage rows referencing this group belong to ad-hoc
+    // templates, but that template's one-off instance could still be
+    // in_progress — deleting the group would silently strand it (the
+    // stage becomes unclaimable once its assignee_group_id is nulled
+    // below). Block that case the same way as a non-ad-hoc reference.
+    const liveInstanceUsingGroup = await trx('workflow_stages')
+      .join('workflow_instances', function joinInstance() {
+        this.on('workflow_instances.tenant_id', '=', 'workflow_stages.tenant_id').andOn(
+          'workflow_instances.workflow_template_id',
+          '=',
+          'workflow_stages.workflow_template_id',
+        );
+      })
+      .where({
+        'workflow_stages.tenant_id': tenantId,
+        'workflow_stages.assignee_group_id': groupId,
+        'workflow_instances.status': 'in_progress',
+      })
+      .first();
+    if (liveInstanceUsingGroup) {
+      throw new AppError(
+        409,
+        'Group is assigned to a stage of an in-progress workflow instance and cannot be deleted',
+      );
+    }
+
     // Any remaining stage rows referencing this group must belong to
     // ad-hoc (one-off, never-reused) templates, per the check above — null
     // out the reference so the FK doesn't block deletion; the historical

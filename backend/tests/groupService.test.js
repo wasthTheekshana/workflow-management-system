@@ -127,4 +127,66 @@ describe('groupService', () => {
     await db('workflow_stages').where({ tenant_id: TENANT_ID, workflow_template_id: workflowTemplate.id }).del();
     await db('workflow_templates').where({ tenant_id: TENANT_ID, id: workflowTemplate.id }).del();
   });
+
+  it('rejects deleting a group assigned to a stage of an in-progress ad-hoc instance', async () => {
+    const group = await createGroup(TENANT_ID, 'Live-Adhoc Group');
+
+    const [templateFile] = await db('template_files')
+      .insert({ tenant_id: TENANT_ID, name: 'Live Adhoc Template File' })
+      .returning('id');
+    const [templateFileVersion] = await db('template_file_versions')
+      .insert({
+        tenant_id: TENANT_ID,
+        template_file_id: templateFile.id,
+        version_number: 1,
+        file_path: 'live-adhoc/v1.docx',
+      })
+      .returning('id');
+    const [workflowTemplate] = await db('workflow_templates')
+      .insert({ tenant_id: TENANT_ID, name: 'Live Adhoc Workflow', is_adhoc: true })
+      .returning('id');
+    await db('workflow_stages').insert({
+      tenant_id: TENANT_ID,
+      workflow_template_id: workflowTemplate.id,
+      stage_order: 1,
+      name: 'Review',
+      assignee_type: 'group',
+      assignee_group_id: group.id,
+      allowed_actions: JSON.stringify(['forward', 'send_back', 'reject']),
+    });
+    const [documentType] = await db('document_types')
+      .insert({
+        tenant_id: TENANT_ID,
+        name: 'Live Adhoc Document Type',
+        template_file_id: templateFile.id,
+        workflow_mode: 'adhoc',
+        workflow_template_id: null,
+      })
+      .returning('id');
+    const [instance] = await db('workflow_instances')
+      .insert({
+        tenant_id: TENANT_ID,
+        document_type_id: documentType.id,
+        template_file_version_id: templateFileVersion.id,
+        workflow_template_id: workflowTemplate.id,
+        current_stage_order: 1,
+        status: 'in_progress',
+        created_by: USER_ID,
+      })
+      .returning('id');
+
+    await expect(deleteGroup(TENANT_ID, group.id)).rejects.toThrow(AppError);
+
+    await db('workflow_instances').where({ tenant_id: TENANT_ID, id: instance.id }).update({ status: 'completed' });
+    await deleteGroup(TENANT_ID, group.id);
+    const afterDelete = await listGroups(TENANT_ID);
+    expect(afterDelete.find((g) => g.id === group.id)).toBeUndefined();
+
+    await db('workflow_instances').where({ tenant_id: TENANT_ID, id: instance.id }).del();
+    await db('document_types').where({ tenant_id: TENANT_ID, id: documentType.id }).del();
+    await db('workflow_stages').where({ tenant_id: TENANT_ID, workflow_template_id: workflowTemplate.id }).del();
+    await db('workflow_templates').where({ tenant_id: TENANT_ID, id: workflowTemplate.id }).del();
+    await db('template_file_versions').where({ tenant_id: TENANT_ID, id: templateFileVersion.id }).del();
+    await db('template_files').where({ tenant_id: TENANT_ID, id: templateFile.id }).del();
+  });
 });

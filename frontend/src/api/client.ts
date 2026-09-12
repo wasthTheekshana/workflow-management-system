@@ -30,7 +30,7 @@ async function baseFetch(path: string, options: RequestInit = {}): Promise<Respo
 
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
 
-  if (response.status === 401) {
+  if (response.status === 401 && token) {
     handleUnauthorized();
     throw new ApiError(401, 'Session expired');
   }

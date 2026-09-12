@@ -24,7 +24,7 @@ async function isInvolvedInInstance(tenantId, instance, stage, userId, isAdmin) 
     return true;
   }
 
-  if (!instance.claimed_by) {
+  if (instance.status === 'in_progress' && !instance.claimed_by) {
     if (stage.assignee_type === 'role') {
       const hasRole = await db('user_roles')
         .where({ tenant_id: tenantId, user_id: userId, role_id: stage.assignee_role_id })
@@ -84,35 +84,54 @@ async function addComment(tenantId, userId, isAdmin, instanceId, body) {
   }
   assertRequiredString(body, 'body');
 
-  const [inserted] = await db('comments')
-    .insert({ tenant_id: tenantId, workflow_instance_id: instanceId, author_id: userId, body })
-    .returning('*');
-
   const author = await db('users').where({ tenant_id: tenantId, id: userId }).first();
-
-  const recipientEmails = new Set();
-
-  const creator = await db('users').where({ tenant_id: tenantId, id: instance.created_by }).first();
-  if (creator) {
-    recipientEmails.add(creator.email);
+  if (!author) {
+    throw new AppError(404, 'Commenting user not found');
   }
 
-  const actorRows = await db('stage_actions')
-    .join('users', 'users.id', 'stage_actions.actor_id')
-    .where({ 'stage_actions.tenant_id': tenantId, 'stage_actions.workflow_instance_id': instanceId })
-    .distinct('users.email')
-    .select('users.email');
-  actorRows.forEach((row) => recipientEmails.add(row.email));
+  const [inserted] = await db('comments')
+    .insert({ tenant_id: tenantId, workflow_instance_id: instanceId, author_id: userId, body: body.trim() })
+    .returning('*');
 
-  const stageEmails = await resolveStageRecipientEmails(tenantId, stage);
-  stageEmails.forEach((email) => recipientEmails.add(email));
+  try {
+    const recipientEmails = new Set();
 
-  recipientEmails.delete(author.email);
+    const creator = await db('users').where({ tenant_id: tenantId, id: instance.created_by }).first();
+    if (creator) {
+      recipientEmails.add(creator.email);
+    }
 
-  await notifyEmails(tenantId, instanceId, 'commented', Array.from(recipientEmails), {
-    documentTypeName: documentType.name,
-    authorName: author.full_name || author.email,
-  });
+    const actorRows = await db('stage_actions')
+      .join('users', 'users.id', 'stage_actions.actor_id')
+      .where({ 'stage_actions.tenant_id': tenantId, 'stage_actions.workflow_instance_id': instanceId })
+      .distinct('users.email')
+      .select('users.email');
+    actorRows.forEach((row) => recipientEmails.add(row.email));
+
+    if (instance.status === 'in_progress') {
+      if (instance.claimed_by) {
+        const claimant = await db('users').where({ tenant_id: tenantId, id: instance.claimed_by }).first();
+        if (claimant) {
+          recipientEmails.add(claimant.email);
+        }
+      } else {
+        const stageEmails = await resolveStageRecipientEmails(tenantId, stage);
+        stageEmails.forEach((email) => recipientEmails.add(email));
+      }
+    }
+
+    recipientEmails.delete(author.email);
+
+    await notifyEmails(tenantId, instanceId, 'commented', Array.from(recipientEmails), {
+      documentTypeName: documentType.name,
+      authorName: author.full_name || author.email,
+    });
+  } catch (err) {
+    // The comment is already saved and permanent; a notification failure
+    // must not be reported back as if the comment itself failed to post.
+    // eslint-disable-next-line no-console
+    console.error('Failed to send comment notifications:', err);
+  }
 
   return toCommentDto({
     id: inserted.id,

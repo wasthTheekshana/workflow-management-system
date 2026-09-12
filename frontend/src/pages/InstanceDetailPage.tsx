@@ -50,7 +50,7 @@ export function InstanceDetailPage() {
     queryFn: () => getInstanceHistory(id!),
     enabled: Boolean(id),
   });
-  const { data: instanceComments } = useQuery({
+  const { data: instanceComments, error: instanceCommentsError } = useQuery({
     queryKey: ['instanceComments', id],
     queryFn: () => listComments(id!),
     enabled: Boolean(id),
@@ -67,6 +67,7 @@ export function InstanceDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['instance', id] });
     queryClient.invalidateQueries({ queryKey: ['instanceHistory', id] });
     queryClient.invalidateQueries({ queryKey: ['instanceContent', id] });
+    queryClient.invalidateQueries({ queryKey: ['instanceComments', id] });
     queryClient.invalidateQueries({ queryKey: ['myTasks'] });
   }
 
@@ -136,7 +137,10 @@ export function InstanceDetailPage() {
       setCommentBody('');
       queryClient.invalidateQueries({ queryKey: ['instanceComments', id] });
     },
-    onError: (err) => onError(err, 'Failed to post comment'),
+    onError: (err) => {
+      onError(err, 'Failed to post comment');
+      queryClient.invalidateQueries({ queryKey: ['instanceComments', id] });
+    },
   });
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -298,6 +302,9 @@ export function InstanceDetailPage() {
           )}
         </ul>
 
+        {instanceCommentsError instanceof ApiError && instanceCommentsError.status !== 403 && (
+          <p className="mb-3 mt-6 rounded bg-red-50 p-2 text-sm text-red-700">Could not load comments.</p>
+        )}
         {instanceComments && (
           <>
             <h2 className="mb-2 mt-6 text-sm font-semibold text-gray-700">Comments</h2>

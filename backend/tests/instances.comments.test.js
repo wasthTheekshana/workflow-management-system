@@ -199,5 +199,7 @@ describe('workflow instance comments', () => {
     expect(recipientEmails).toContain(actorEmail);
     expect(recipientEmails).not.toContain('comments-groupmember@example.com');
     expect(notifications.every((n) => n.subject.startsWith('New comment:'))).toBe(true);
+    expect(recipientEmails).not.toContain('comments-admin@example.com');
+    expect(notifications.every((n) => !n.body.includes('Notification check'))).toBe(true);
   });
 });

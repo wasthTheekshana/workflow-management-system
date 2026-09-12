@@ -25,6 +25,10 @@ const TEMPLATES = {
     subject: `You've been assigned: ${documentTypeName} — ${stageName}`,
     body: `An admin has assigned you to act on "${documentTypeName}" at the "${stageName}" stage.`,
   }),
+  commented: ({ documentTypeName, authorName }) => ({
+    subject: `New comment: ${documentTypeName}`,
+    body: `${authorName} commented on "${documentTypeName}".`,
+  }),
 };
 
 async function resolveStageRecipientEmails(tenantId, stage) {
@@ -78,4 +82,9 @@ async function notifyUser(tenantId, workflowInstanceId, templateName, userId, co
   await enqueueNotification(tenantId, workflowInstanceId, user.email, subject, body);
 }
 
-module.exports = { notifyStage, notifyUser, TEMPLATES };
+async function notifyEmails(tenantId, workflowInstanceId, templateName, emails, context) {
+  const { subject, body } = TEMPLATES[templateName](context);
+  await Promise.all(emails.map((email) => enqueueNotification(tenantId, workflowInstanceId, email, subject, body)));
+}
+
+module.exports = { notifyStage, notifyUser, notifyEmails, resolveStageRecipientEmails, TEMPLATES };

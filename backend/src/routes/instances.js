@@ -14,6 +14,7 @@ const {
   rejectInstance,
   resubmitInstance,
 } = require('../services/workflowInstanceService');
+const { listComments, addComment } = require('../services/commentService');
 const { listMyTasks, getInstanceHistory } = require('../services/dashboardService');
 const { buildInstanceEditConfig } = require('../services/documentEditingService');
 
@@ -138,6 +139,30 @@ router.post('/:id/resubmit', async (req, res, next) => {
   try {
     const instance = await resubmitInstance(req.user.tenantId, req.user.userId, req.params.id);
     res.status(201).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/comments', async (req, res, next) => {
+  try {
+    const comments = await listComments(req.user.tenantId, req.user.userId, req.user.isAdmin, req.params.id);
+    res.status(200).json(comments);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/comments', async (req, res, next) => {
+  try {
+    const comment = await addComment(
+      req.user.tenantId,
+      req.user.userId,
+      req.user.isAdmin,
+      req.params.id,
+      req.body.body,
+    );
+    res.status(201).json(comment);
   } catch (err) {
     next(err);
   }

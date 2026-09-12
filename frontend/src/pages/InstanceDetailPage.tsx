@@ -19,6 +19,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../api/client';
 import { getInstanceEditConfig } from '../api/documentEditing';
+import { addComment, listComments } from '../api/comments';
 import { DocumentPanel } from '../components/DocumentPanel';
 
 function canActLocally(stage: StageInfo, instance: WorkflowInstance, userId: string): boolean {
@@ -36,6 +37,7 @@ export function InstanceDetailPage() {
   const { decoded } = useAuth();
   const queryClient = useQueryClient();
   const [comment, setComment] = useState('');
+  const [commentBody, setCommentBody] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const { data: detail, isLoading } = useQuery({
@@ -47,6 +49,12 @@ export function InstanceDetailPage() {
     queryKey: ['instanceHistory', id],
     queryFn: () => getInstanceHistory(id!),
     enabled: Boolean(id),
+  });
+  const { data: instanceComments } = useQuery({
+    queryKey: ['instanceComments', id],
+    queryFn: () => listComments(id!),
+    enabled: Boolean(id),
+    retry: false,
   });
   const isRichText = detail?.contentFormat === 'richtext';
   const { data: currentContent } = useQuery({
@@ -121,6 +129,14 @@ export function InstanceDetailPage() {
     mutationFn: (content: unknown) => addInstanceContentVersion(id!, content),
     onSuccess: invalidateAll,
     onError: (err) => onError(err, 'Failed to save'),
+  });
+  const addCommentMutation = useMutation({
+    mutationFn: (body: string) => addComment(id!, body),
+    onSuccess: () => {
+      setCommentBody('');
+      queryClient.invalidateQueries({ queryKey: ['instanceComments', id] });
+    },
+    onError: (err) => onError(err, 'Failed to post comment'),
   });
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -281,6 +297,41 @@ export function InstanceDetailPage() {
             <li className="px-4 py-3 text-sm text-gray-500">No actions recorded yet.</li>
           )}
         </ul>
+
+        {instanceComments && (
+          <>
+            <h2 className="mb-2 mt-6 text-sm font-semibold text-gray-700">Comments</h2>
+            <ul className="mb-3 divide-y divide-gray-200 rounded border border-gray-200 bg-white">
+              {instanceComments.map((c) => (
+                <li key={c.id} className="px-4 py-3 text-sm">
+                  <span className="font-medium">{c.author_name}</span>
+                  {' — '}
+                  {new Date(c.created_at).toLocaleString()}
+                  <p className="mt-1 text-gray-700">{c.body}</p>
+                </li>
+              ))}
+              {instanceComments.length === 0 && (
+                <li className="px-4 py-3 text-sm text-gray-500">No comments yet.</li>
+              )}
+            </ul>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={commentBody}
+                onChange={(e) => setCommentBody(e.target.value)}
+                placeholder="Add a comment"
+                className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
+              />
+              <button
+                onClick={() => addCommentMutation.mutate(commentBody)}
+                disabled={addCommentMutation.isPending || commentBody.trim().length === 0}
+                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                Post
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="min-h-[70vh] flex-1">

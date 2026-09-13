@@ -3,6 +3,7 @@ const { authenticate } = require('../middleware/auth');
 const { upload } = require('../config/multerUpload');
 const {
   startInstance,
+  startInstanceFromOwnDocument,
   getInstanceDetail,
   claimInstance,
   addInstanceVersion,
@@ -40,6 +41,34 @@ router.post('/', async (req, res, next) => {
       req.body.documentTypeId,
       req.body.stages,
     );
+    res.status(201).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/from-document', upload.single('file'), async (req, res, next) => {
+  let stages;
+  try {
+    stages = req.body.stages ? JSON.parse(req.body.stages) : undefined;
+  } catch {
+    return res.status(400).json({ error: 'stages must be valid JSON' });
+  }
+  let content;
+  try {
+    content = req.body.content ? JSON.parse(req.body.content) : undefined;
+  } catch {
+    return res.status(400).json({ error: 'content must be valid JSON' });
+  }
+
+  try {
+    const instance = await startInstanceFromOwnDocument(req.user.tenantId, req.user.userId, req.user.isAdmin, {
+      name: req.body.name,
+      contentFormat: req.body.contentFormat,
+      file: req.file,
+      content,
+      stages,
+    });
     res.status(201).json(instance);
   } catch (err) {
     next(err);

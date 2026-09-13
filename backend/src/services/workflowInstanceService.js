@@ -10,6 +10,8 @@ const { listVisibleUsers, listVisibleGroups } = require('./visibilityService');
 
 const ADHOC_ASSIGNEE_TYPES = ['user', 'group'];
 const ADHOC_DEFAULT_ALLOWED_ACTIONS = ['forward', 'send_back', 'reject'];
+const OWN_DOCUMENT_CONTENT_FORMATS = ['docx', 'richtext'];
+const OWN_DOCUMENT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 async function createAdhocWorkflowTemplate(trx, tenantId, userId, isAdmin, documentType, stages) {
   if (!Array.isArray(stages) || stages.length === 0) {
@@ -138,6 +140,83 @@ async function startInstance(tenantId, userId, isAdmin, documentTypeId, stages) 
 
   await notifyStage(tenantId, instance.id, 'assigned', firstStage, {
     documentTypeName: documentType.name,
+    stageName: firstStage.name,
+  });
+
+  return instance;
+}
+
+async function startInstanceFromOwnDocument(tenantId, userId, isAdmin, { name, contentFormat, file, content, stages }) {
+  assertRequiredString(name, 'name');
+  if (!OWN_DOCUMENT_CONTENT_FORMATS.includes(contentFormat)) {
+    throw new AppError(400, `contentFormat must be one of: ${OWN_DOCUMENT_CONTENT_FORMATS.join(', ')}`);
+  }
+
+  if (contentFormat === 'docx') {
+    if (!file) {
+      throw new AppError(400, 'file is required when contentFormat is "docx"');
+    }
+    assertAllowedUpload(file, ['docx'], OWN_DOCUMENT_MAX_UPLOAD_BYTES);
+  } else if (typeof content !== 'object' || content === null) {
+    throw new AppError(400, 'content must be a JSON object when contentFormat is "richtext"');
+  }
+
+  const { instance, firstStage } = await db.transaction(async (trx) => {
+    const [templateFile] = await trx('template_files')
+      .insert({ tenant_id: tenantId, name, content_format: contentFormat, is_adhoc: true })
+      .returning('*');
+
+    const versionFields =
+      contentFormat === 'docx'
+        ? { file_path: await saveUploadedFile(tenantId, file.buffer, file.originalname.split('.').pop().toLowerCase()) }
+        : { content: JSON.stringify(content) };
+
+    const [templateFileVersion] = await trx('template_file_versions')
+      .insert({
+        tenant_id: tenantId,
+        template_file_id: templateFile.id,
+        version_number: 1,
+        uploaded_by: userId,
+        ...versionFields,
+      })
+      .returning('*');
+
+    const [documentType] = await trx('document_types')
+      .insert({
+        tenant_id: tenantId,
+        name,
+        template_file_id: templateFile.id,
+        workflow_mode: 'adhoc',
+        workflow_template_id: null,
+        is_adhoc: true,
+        allowed_extensions: JSON.stringify(['docx']),
+        max_upload_size_bytes: OWN_DOCUMENT_MAX_UPLOAD_BYTES,
+      })
+      .returning('*');
+
+    const workflowTemplateId = await createAdhocWorkflowTemplate(trx, tenantId, userId, isAdmin, { name }, stages);
+
+    const stage = await trx('workflow_stages')
+      .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: 1 })
+      .first();
+
+    const [insertedInstance] = await trx('workflow_instances')
+      .insert({
+        tenant_id: tenantId,
+        document_type_id: documentType.id,
+        template_file_version_id: templateFileVersion.id,
+        workflow_template_id: workflowTemplateId,
+        current_stage_order: 1,
+        status: 'in_progress',
+        created_by: userId,
+      })
+      .returning('*');
+
+    return { instance: insertedInstance, firstStage: stage };
+  });
+
+  await notifyStage(tenantId, instance.id, 'assigned', firstStage, {
+    documentTypeName: name,
     stageName: firstStage.name,
   });
 
@@ -519,6 +598,7 @@ async function reassignInstance(tenantId, adminId, instanceId, targetUserId, com
 module.exports = {
   getInstanceDetail,
   startInstance,
+  startInstanceFromOwnDocument,
   claimInstance,
   addInstanceVersion,
   addInstanceContentVersion,

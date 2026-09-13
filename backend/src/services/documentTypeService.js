@@ -55,7 +55,7 @@ async function createDocumentType(tenantId, input) {
 }
 
 async function listDocumentTypes(tenantId) {
-  return db('document_types').where({ tenant_id: tenantId }).orderBy('created_at', 'desc');
+  return db('document_types').where({ tenant_id: tenantId, is_adhoc: false }).orderBy('created_at', 'desc');
 }
 
 async function getDocumentType(tenantId, id) {

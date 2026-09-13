@@ -21,7 +21,7 @@ async function createTemplateFile(tenantId, name, contentFormat) {
 }
 
 async function listTemplateFiles(tenantId) {
-  return db('template_files').where({ tenant_id: tenantId }).orderBy('created_at', 'desc');
+  return db('template_files').where({ tenant_id: tenantId, is_adhoc: false }).orderBy('created_at', 'desc');
 }
 
 async function getTemplateFile(tenantId, templateFileId) {

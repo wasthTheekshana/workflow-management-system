@@ -96,6 +96,26 @@ export function startInstance(documentTypeId: string, stages?: AdhocStageInput[]
   return apiFetch('/instances', { method: 'POST', body: JSON.stringify({ documentTypeId, stages }) });
 }
 
+export function startInstanceFromOwnDocument(input: {
+  name: string;
+  contentFormat: 'docx' | 'richtext';
+  file?: File;
+  content?: unknown;
+  stages: AdhocStageInput[];
+}): Promise<WorkflowInstance> {
+  const formData = new FormData();
+  formData.append('name', input.name);
+  formData.append('contentFormat', input.contentFormat);
+  if (input.file) {
+    formData.append('file', input.file);
+  }
+  if (input.content !== undefined) {
+    formData.append('content', JSON.stringify(input.content));
+  }
+  formData.append('stages', JSON.stringify(input.stages));
+  return apiFetch('/instances/from-document', { method: 'POST', body: formData });
+}
+
 export function getInstance(id: string): Promise<InstanceWithStage> {
   return apiFetch(`/instances/${id}`);
 }

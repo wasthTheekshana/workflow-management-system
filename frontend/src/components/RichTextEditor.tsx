@@ -8,13 +8,17 @@ interface RichTextEditorProps {
   editable: boolean;
   saving?: boolean;
   onSave?: (content: unknown) => void;
+  onChange?: (content: unknown) => void;
 }
 
-export function RichTextEditor({ title, initialContent, editable, saving, onSave }: RichTextEditorProps) {
+export function RichTextEditor({ title, initialContent, editable, saving, onSave, onChange }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [StarterKit],
     content: (initialContent as object) ?? '',
     editable,
+    onUpdate: ({ editor: updatedEditor }) => {
+      onChange?.(updatedEditor.getJSON());
+    },
   });
 
   useEffect(() => {

@@ -95,6 +95,9 @@ async function startInstance(tenantId, userId, isAdmin, documentTypeId, stages) 
   if (!documentType) {
     throw new AppError(400, 'documentTypeId does not belong to this tenant');
   }
+  if (documentType.is_adhoc) {
+    throw new AppError(400, 'This document type is one-off and cannot be reused to start another instance');
+  }
 
   const latestTemplateVersion = await db('template_file_versions')
     .where({ tenant_id: tenantId, template_file_id: documentType.template_file_id })
@@ -161,15 +164,18 @@ async function startInstanceFromOwnDocument(tenantId, userId, isAdmin, { name, c
     throw new AppError(400, 'content must be a JSON object when contentFormat is "richtext"');
   }
 
+  // File I/O happens before the transaction opens: the filesystem write is not
+  // transactional, so keeping it outside makes the ordering explicit and matches
+  // how addTemplateFileVersion/addInstanceVersion already work in this codebase.
+  const versionFields =
+    contentFormat === 'docx'
+      ? { file_path: await saveUploadedFile(tenantId, file.buffer, file.originalname.split('.').pop().toLowerCase()) }
+      : { content: JSON.stringify(content) };
+
   const { instance, firstStage } = await db.transaction(async (trx) => {
     const [templateFile] = await trx('template_files')
       .insert({ tenant_id: tenantId, name, content_format: contentFormat, is_adhoc: true })
       .returning('*');
-
-    const versionFields =
-      contentFormat === 'docx'
-        ? { file_path: await saveUploadedFile(tenantId, file.buffer, file.originalname.split('.').pop().toLowerCase()) }
-        : { content: JSON.stringify(content) };
 
     const [templateFileVersion] = await trx('template_file_versions')
       .insert({
@@ -199,6 +205,9 @@ async function startInstanceFromOwnDocument(tenantId, userId, isAdmin, { name, c
     const stage = await trx('workflow_stages')
       .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: 1 })
       .first();
+    if (!stage) {
+      throw new AppError(400, 'The ad-hoc workflow template has no stages configured yet');
+    }
 
     const [insertedInstance] = await trx('workflow_instances')
       .insert({

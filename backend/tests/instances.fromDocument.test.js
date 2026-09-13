@@ -7,6 +7,7 @@ const TENANT_ID = 'f1000000-0000-0000-0000-000000000001';
 const ADMIN_ID = 'f1000000-0000-0000-0000-000000000002';
 const CREATOR_ID = 'f1000000-0000-0000-0000-000000000003';
 const REVIEWER_ID = 'f1000000-0000-0000-0000-000000000004';
+const OUTSIDER_ID = 'f1000000-0000-0000-0000-000000000005';
 const adminToken = signToken({ sub: ADMIN_ID, tenant_id: TENANT_ID, is_admin: true });
 const creatorToken = signToken({ sub: CREATOR_ID, tenant_id: TENANT_ID, is_admin: false });
 const validDocxBuffer = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(20)]);
@@ -21,6 +22,7 @@ describe('start an instance from a self-uploaded document', () => {
         { id: ADMIN_ID, tenant_id: TENANT_ID, email: 'fd-admin@example.com', password_hash: 'x', is_admin: true },
         { id: CREATOR_ID, tenant_id: TENANT_ID, email: 'fd-creator@example.com', password_hash: 'x' },
         { id: REVIEWER_ID, tenant_id: TENANT_ID, email: 'fd-reviewer@example.com', password_hash: 'x' },
+        { id: OUTSIDER_ID, tenant_id: TENANT_ID, email: 'fd-outsider@example.com', password_hash: 'x' },
       ])
       .onConflict('id')
       .ignore();
@@ -131,6 +133,28 @@ describe('start an instance from a self-uploaded document', () => {
     expect(response.status).toBe(400);
   });
 
+  it('rejects a stages[].assigneeId outside the creator visibility pool and rolls the transaction back', async () => {
+    const stages = JSON.stringify([{ name: 'Review', assigneeType: 'user', assigneeId: OUTSIDER_ID }]);
+    const response = await request(app)
+      .post('/instances/from-document')
+      .set('Authorization', `Bearer ${creatorToken}`)
+      .field('name', 'Rolled Back Memo')
+      .field('contentFormat', 'docx')
+      .field('stages', stages)
+      .attach('file', validDocxBuffer, 'memo.docx');
+    expect(response.status).toBe(400);
+
+    const strayTemplateFile = await db('template_files')
+      .where({ tenant_id: TENANT_ID, name: 'Rolled Back Memo' })
+      .first();
+    expect(strayTemplateFile).toBeUndefined();
+
+    const strayDocumentType = await db('document_types')
+      .where({ tenant_id: TENANT_ID, name: 'Rolled Back Memo' })
+      .first();
+    expect(strayDocumentType).toBeUndefined();
+  });
+
   it('excludes the self-service document type and template file from admin lists', async () => {
     const documentTypes = await request(app)
       .get('/admin/document-types')
@@ -141,5 +165,15 @@ describe('start an instance from a self-uploaded document', () => {
       .get('/admin/template-files')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(templateFiles.body.some((tf) => tf.name === 'My Own Memo')).toBe(false);
+
+    for (const name of ['My Own Memo', 'My Rich Text Memo']) {
+      const documentType = await db('document_types').where({ tenant_id: TENANT_ID, name }).first();
+      expect(documentType).toBeDefined();
+      expect(documentType.is_adhoc).toBe(true);
+
+      const templateFile = await db('template_files').where({ tenant_id: TENANT_ID, name }).first();
+      expect(templateFile).toBeDefined();
+      expect(templateFile.is_adhoc).toBe(true);
+    }
   });
 });

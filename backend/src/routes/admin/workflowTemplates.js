@@ -6,6 +6,7 @@ const {
   listWorkflowTemplates,
   getWorkflowTemplate,
   addWorkflowStage,
+  updateWorkflowStage,
 } = require('../../services/workflowTemplateService');
 
 const router = express.Router();
@@ -43,6 +44,20 @@ router.post('/:id/stages', async (req, res, next) => {
   try {
     const stage = await addWorkflowStage(req.user.tenantId, req.params.id, req.body);
     res.status(201).json(stage);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:id/stages/:stageOrder', async (req, res, next) => {
+  try {
+    const stage = await updateWorkflowStage(
+      req.user.tenantId,
+      req.params.id,
+      Number(req.params.stageOrder),
+      req.body,
+    );
+    res.status(200).json(stage);
   } catch (err) {
     next(err);
   }

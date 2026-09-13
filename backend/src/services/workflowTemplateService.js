@@ -29,21 +29,7 @@ async function getWorkflowTemplate(tenantId, workflowTemplateId) {
 const ALLOWED_ASSIGNEE_TYPES = ['user', 'role', 'group'];
 const ALLOWED_ACTIONS = ['forward', 'send_back', 'reject'];
 
-async function addWorkflowStage(tenantId, workflowTemplateId, input) {
-  assertUuid(workflowTemplateId, 'workflowTemplateId');
-  const workflowTemplate = await db('workflow_templates')
-    .where({ tenant_id: tenantId, id: workflowTemplateId })
-    .first();
-  if (!workflowTemplate) {
-    throw new AppError(404, 'Workflow template not found');
-  }
-
-  const { stageOrder, name, assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, allowedActions } = input;
-
-  if (!Number.isInteger(stageOrder) || stageOrder < 1) {
-    throw new AppError(400, 'stageOrder must be a positive integer');
-  }
-  assertRequiredString(name, 'name');
+async function validateStageAssignment(tenantId, { assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, allowedActions }) {
   if (!ALLOWED_ASSIGNEE_TYPES.includes(assigneeType)) {
     throw new AppError(400, `assigneeType must be one of: ${ALLOWED_ASSIGNEE_TYPES.join(', ')}`);
   }
@@ -73,6 +59,31 @@ async function addWorkflowStage(tenantId, workflowTemplateId, input) {
   if (invalidAction) {
     throw new AppError(400, `Invalid action "${invalidAction}". Allowed actions: ${ALLOWED_ACTIONS.join(', ')}`);
   }
+  return actions;
+}
+
+async function addWorkflowStage(tenantId, workflowTemplateId, input) {
+  assertUuid(workflowTemplateId, 'workflowTemplateId');
+  const workflowTemplate = await db('workflow_templates')
+    .where({ tenant_id: tenantId, id: workflowTemplateId })
+    .first();
+  if (!workflowTemplate) {
+    throw new AppError(404, 'Workflow template not found');
+  }
+
+  const { stageOrder, name, assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, allowedActions } = input;
+
+  if (!Number.isInteger(stageOrder) || stageOrder < 1) {
+    throw new AppError(400, 'stageOrder must be a positive integer');
+  }
+  assertRequiredString(name, 'name');
+  const actions = await validateStageAssignment(tenantId, {
+    assigneeType,
+    assigneeUserId,
+    assigneeRoleId,
+    assigneeGroupId,
+    allowedActions,
+  });
 
   const existingStage = await db('workflow_stages')
     .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: stageOrder })
@@ -98,4 +109,54 @@ async function addWorkflowStage(tenantId, workflowTemplateId, input) {
   return stage;
 }
 
-module.exports = { createWorkflowTemplate, listWorkflowTemplates, getWorkflowTemplate, addWorkflowStage };
+// Updates an existing stage's name/assignee/allowed actions in place. Since
+// running instances resolve their current stage live by
+// (workflow_template_id, stage_order) rather than snapshotting it at start
+// time, this immediately re-points any in-progress instance currently
+// sitting at this stage to the new assignee — the same "reassign" effect an
+// admin gets from rebuilding the template, without needing to.
+async function updateWorkflowStage(tenantId, workflowTemplateId, stageOrder, input) {
+  assertUuid(workflowTemplateId, 'workflowTemplateId');
+  if (!Number.isInteger(stageOrder) || stageOrder < 1) {
+    throw new AppError(400, 'stageOrder must be a positive integer');
+  }
+
+  const existingStage = await db('workflow_stages')
+    .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: stageOrder })
+    .first();
+  if (!existingStage) {
+    throw new AppError(404, 'Stage not found');
+  }
+
+  const { name, assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, allowedActions } = input;
+  assertRequiredString(name, 'name');
+  const actions = await validateStageAssignment(tenantId, {
+    assigneeType,
+    assigneeUserId,
+    assigneeRoleId,
+    assigneeGroupId,
+    allowedActions,
+  });
+
+  const [stage] = await db('workflow_stages')
+    .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: stageOrder })
+    .update({
+      name,
+      assignee_type: assigneeType,
+      assignee_user_id: assigneeType === 'user' ? assigneeUserId : null,
+      assignee_role_id: assigneeType === 'role' ? assigneeRoleId : null,
+      assignee_group_id: assigneeType === 'group' ? assigneeGroupId : null,
+      allowed_actions: JSON.stringify(actions),
+    })
+    .returning('*');
+
+  return stage;
+}
+
+module.exports = {
+  createWorkflowTemplate,
+  listWorkflowTemplates,
+  getWorkflowTemplate,
+  addWorkflowStage,
+  updateWorkflowStage,
+};

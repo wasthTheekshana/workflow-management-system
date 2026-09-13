@@ -52,3 +52,23 @@ export function addWorkflowStage(workflowTemplateId: string, input: AddStageInpu
     body: JSON.stringify(input),
   });
 }
+
+export interface UpdateStageInput {
+  name: string;
+  assigneeType: 'user' | 'role' | 'group';
+  assigneeUserId?: string;
+  assigneeRoleId?: string;
+  assigneeGroupId?: string;
+  allowedActions: string[];
+}
+
+export function updateWorkflowStage(
+  workflowTemplateId: string,
+  stageOrder: number,
+  input: UpdateStageInput,
+): Promise<WorkflowStage> {
+  return apiFetch(`/admin/workflow-templates/${workflowTemplateId}/stages/${stageOrder}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}

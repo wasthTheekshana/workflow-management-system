@@ -114,4 +114,52 @@ describe('workflow stages admin API', () => {
       });
     expect(response.status).toBe(400);
   });
+
+  it('reassigns an existing stage from one user to another', async () => {
+    const [newAssignee] = await db('users')
+      .insert({ tenant_id: TENANT_ID, email: 'ws-reassign-target@example.com', password_hash: 'x' })
+      .returning('id');
+
+    const response = await request(app)
+      .patch(`/admin/workflow-templates/${workflowTemplateId}/stages/1`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Draft (reassigned)', assigneeType: 'user', assigneeUserId: newAssignee.id });
+    expect(response.status).toBe(200);
+    expect(response.body.name).toBe('Draft (reassigned)');
+    expect(response.body.assignee_user_id).toBe(newAssignee.id);
+
+    const detail = await request(app)
+      .get(`/admin/workflow-templates/${workflowTemplateId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const stage1 = detail.body.stages.find((s) => s.stage_order === 1);
+    expect(stage1.assignee_user_id).toBe(newAssignee.id);
+  });
+
+  it('changes an existing stage from a user assignee to a group assignee', async () => {
+    const response = await request(app)
+      .patch(`/admin/workflow-templates/${workflowTemplateId}/stages/1`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Draft', assigneeType: 'group', assigneeGroupId: groupId });
+    expect(response.status).toBe(200);
+    expect(response.body.assignee_type).toBe('group');
+    expect(response.body.assignee_group_id).toBe(groupId);
+    expect(response.body.assignee_user_id).toBeNull();
+  });
+
+  it('returns 404 for a stageOrder that does not exist on the template', async () => {
+    const response = await request(app)
+      .patch(`/admin/workflow-templates/${workflowTemplateId}/stages/99`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Nope', assigneeType: 'user', assigneeUserId: OTHER_USER_ID });
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects a non-admin updating a stage', async () => {
+    const userToken = signToken({ sub: OTHER_USER_ID, tenant_id: TENANT_ID, is_admin: false });
+    const response = await request(app)
+      .patch(`/admin/workflow-templates/${workflowTemplateId}/stages/2`)
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ name: 'Review', assigneeType: 'user', assigneeUserId: OTHER_USER_ID });
+    expect(response.status).toBe(403);
+  });
 });

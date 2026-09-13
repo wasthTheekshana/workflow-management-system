@@ -24,7 +24,6 @@ describe('GET /admin/users', () => {
   afterAll(async () => {
     await db('users').where({ tenant_id: TENANT_ID }).del();
     await db('tenants').where({ id: TENANT_ID }).del();
-    await db.destroy();
   });
 
   it('rejects a non-admin', async () => {
@@ -37,5 +36,69 @@ describe('GET /admin/users', () => {
     expect(response.status).toBe(200);
     expect(response.body.some((u) => u.id === OTHER_USER_ID && u.full_name === 'Other User')).toBe(true);
     expect(response.body.every((u) => u.password_hash === undefined)).toBe(true);
+  });
+});
+
+describe('POST /admin/users', () => {
+  beforeAll(async () => {
+    await db('tenants').insert({ id: TENANT_ID, name: 'Admin Users Test Tenant' }).onConflict('id').ignore();
+    await db('users')
+      .insert({ id: ADMIN_ID, tenant_id: TENANT_ID, email: 'au-admin@example.com', password_hash: 'x', is_admin: true })
+      .onConflict('id')
+      .ignore();
+  });
+
+  afterAll(async () => {
+    await db('users').where({ tenant_id: TENANT_ID }).del();
+    await db('tenants').where({ id: TENANT_ID }).del();
+    await db.destroy();
+  });
+
+  it('rejects a non-admin', async () => {
+    const response = await request(app)
+      .post('/admin/users')
+      .set('Authorization', `Bearer ${userToken}`)
+      .send({ email: 'blocked@example.com', password: 'password123' });
+    expect(response.status).toBe(403);
+  });
+
+  it('creates a user with a hashed password and no password in the response', async () => {
+    const response = await request(app)
+      .post('/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'new-user@example.com', password: 'password123', fullName: 'New User', isAdmin: false });
+    expect(response.status).toBe(201);
+    expect(response.body.email).toBe('new-user@example.com');
+    expect(response.body.full_name).toBe('New User');
+    expect(response.body.is_admin).toBe(false);
+    expect(response.body.password).toBeUndefined();
+    expect(response.body.password_hash).toBeUndefined();
+
+    const stored = await db('users').where({ tenant_id: TENANT_ID, email: 'new-user@example.com' }).first();
+    expect(stored.password_hash).not.toBe('password123');
+  });
+
+  it('rejects a duplicate email with 400', async () => {
+    const response = await request(app)
+      .post('/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'new-user@example.com', password: 'password123' });
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects a missing password with 400', async () => {
+    const response = await request(app)
+      .post('/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'no-password@example.com' });
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects an invalid email with 400', async () => {
+    const response = await request(app)
+      .post('/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ email: 'not-an-email', password: 'password123' });
+    expect(response.status).toBe(400);
   });
 });

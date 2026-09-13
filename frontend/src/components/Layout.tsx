@@ -35,6 +35,9 @@ export function Layout() {
               <NavLink to="/admin/groups" className={linkClass}>
                 Groups
               </NavLink>
+              <NavLink to="/admin/users" className={linkClass}>
+                Users
+              </NavLink>
             </>
           )}
         </div>

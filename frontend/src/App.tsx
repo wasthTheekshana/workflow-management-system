@@ -16,6 +16,7 @@ import { DocumentTypesPage } from './pages/admin/DocumentTypesPage';
 import { AdminInstancesPage } from './pages/admin/AdminInstancesPage';
 import { GroupsPage } from './pages/admin/GroupsPage';
 import { GroupDetailPage } from './pages/admin/GroupDetailPage';
+import { UsersPage } from './pages/admin/UsersPage';
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,7 @@ function App() {
                   <Route path="/admin/instances" element={<AdminInstancesPage />} />
                   <Route path="/admin/groups" element={<GroupsPage />} />
                   <Route path="/admin/groups/:id" element={<GroupDetailPage />} />
+                  <Route path="/admin/users" element={<UsersPage />} />
                 </Route>
               </Route>
             </Route>

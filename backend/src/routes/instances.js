@@ -28,6 +28,7 @@ const {
 } = require('../services/attachmentService');
 const { listMyTasks, getInstanceHistory } = require('../services/dashboardService');
 const { buildInstanceEditConfig } = require('../services/documentEditingService');
+const { listInstanceVersions, compareInstanceVersions } = require('../services/documentDiffService');
 
 const router = express.Router();
 
@@ -334,6 +335,30 @@ router.get('/:id/edit-config', async (req, res, next) => {
   try {
     const editConfig = await buildInstanceEditConfig(req.user.tenantId, req.params.id, req.user.userId);
     res.status(200).json(editConfig);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/versions', async (req, res, next) => {
+  try {
+    const versions = await listInstanceVersions(req.user.tenantId, req.params.id);
+    res.status(200).json(versions);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/diff', async (req, res, next) => {
+  try {
+    const { fromVersion, toVersion } = req.query;
+    const diff = await compareInstanceVersions(
+      req.user.tenantId,
+      req.params.id,
+      fromVersion !== undefined ? Number(fromVersion) : undefined,
+      toVersion !== undefined ? Number(toVersion) : undefined,
+    );
+    res.status(200).json(diff);
   } catch (err) {
     next(err);
   }

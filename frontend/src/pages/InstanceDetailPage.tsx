@@ -30,6 +30,7 @@ import {
 } from '../api/attachments';
 import { getSlaBadgeInfo } from '../utils/sla';
 import { DocumentPanel } from '../components/DocumentPanel';
+import { DocumentDiffViewer } from '../components/DocumentDiffViewer';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -61,6 +62,7 @@ export function InstanceDetailPage() {
   const [isSendBackModalOpen, setIsSendBackModalOpen] = useState(false);
   const [targetStageOrder, setTargetStageOrder] = useState<number | null>(null);
   const [sendBackComment, setSendBackComment] = useState('');
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
 
   const { data: detail, isLoading } = useQuery({
     queryKey: ['instance', id],
@@ -459,6 +461,16 @@ export function InstanceDetailPage() {
             </button>
           )}
 
+          <button
+            onClick={() => setIsDiffModalOpen(true)}
+            className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 flex items-center gap-1.5"
+          >
+            <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Compare Revisions
+          </button>
+
           {isMine && !isRichText && (
             <label className="rounded border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50">
               Upload new version
@@ -533,7 +545,18 @@ export function InstanceDetailPage() {
           </div>
         )}
 
-        <h2 className="mb-2 text-sm font-semibold text-gray-700">Version History</h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700">Version History</h2>
+          <button
+            onClick={() => setIsDiffModalOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Compare Revisions / Redline Diff
+          </button>
+        </div>
         <ul className="mb-6 divide-y divide-gray-200 rounded border border-gray-200 bg-white">
           {history?.versions.map((version) => (
             <li key={version.id} className="px-4 py-3 text-sm">
@@ -732,11 +755,11 @@ export function InstanceDetailPage() {
       )}
 
       {isSendBackModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-            <h2 className="text-lg font-bold text-gray-900">Send Back Document</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Return WF-{String(instance.ticket_number).padStart(6, '0')} to a previous stage for revision.
+            <h3 className="text-lg font-bold text-gray-900">Send Back Document</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Select which previous stage you want to return this document to.
             </p>
 
             <div className="mt-4">
@@ -796,6 +819,12 @@ export function InstanceDetailPage() {
           </div>
         </div>
       )}
+
+      <DocumentDiffViewer
+        instanceId={id!}
+        isOpen={isDiffModalOpen}
+        onClose={() => setIsDiffModalOpen(false)}
+      />
     </div>
   );
 }

@@ -52,7 +52,7 @@ Status indicators:
 - [x] Instance comments thread with involvement-based email notifications
 - [x] Full audit trail (`stage_actions`) and version history inspection
 - [x] **Multi-file supporting attachments (quotes, IDs, receipts with upload, download, delete, audit trail)**
-- [ ] Visual document version diff / redline viewer
+- [x] **Visual document version diff / redline viewer (word-level inline redline + side-by-side split view with revision stats)**
 
 ### Monitoring & Dashboards
 - [x] User "My Tasks" dashboard (Assigned to Me, Waiting on Others, Completed)
@@ -125,12 +125,30 @@ Status indicators:
   - [x] Updated `MyTasksPage.tsx`: added AND/OR consensus badges and approved pills.
   - [x] Frontend production build: **Passed in 3.66s with 0 TypeScript errors (`tsc -b && vite build` 100% clean)**.
 
----
-
-## 11. Next Up in Queue: Missing Capabilities
-- [ ] **Visual Document Version Diff / Redline Viewer**: Side-by-side or inline text diff comparing revisions of rich-text content or version changes across approval stages.
-
----
+## 11. Completed Feature: Visual Document Version Diff & Redline Viewer
+- [x] **Task 1: Backend Diff Algorithm & Service (`documentDiffService.js`)**
+  - [x] Implemented `extractText` supporting rich-text JSON nodes, HTML tags, and strings.
+  - [x] Implemented `computeWordDiff` using dynamic programming LCS algorithm to highlight added/removed words.
+  - [x] Implemented `computeLineDiff` for side-by-side line comparison with line numbering.
+  - [x] Implemented `listInstanceVersions` returning version history with uploader emails and timestamps.
+  - [x] Implemented `compareInstanceVersions` resolving base and target versions (including v0 initial template), calculating additions/deletions/changes statistics.
+- [x] **Task 2: Backend Express Routes (`routes/instances.js`)**
+  - [x] Mounted `GET /instances/:id/versions` with multi-tenant isolation.
+  - [x] Mounted `GET /instances/:id/diff` with `fromVersion` and `toVersion` query parameters.
+- [x] **Task 3: Automated Jest Test Suite (`tests/documentDiff.test.js`)**
+  - [x] 9/9 tests passing covering word diff, line diff, HTML extraction, version listing, default comparison, template v0 comparison, 404 validation, and cross-tenant security isolation.
+- [x] **Task 4: Frontend API & Interactive Redline Modal (`DocumentDiffViewer.tsx`)**
+  - [x] Created `frontend/src/api/diff.ts` (`getInstanceVersions`, `getInstanceDiff`, types `DocumentDiffResult`, `DiffChunk`, `LineDiffItem`).
+  - [x] Created `DocumentDiffViewer.tsx`:
+    - [x] Version selector dropdowns (`Base: v0..vN` → `Compare with: v1..vN`) with author & timestamp info.
+    - [x] Revision statistics badges (`+N added`, `−M removed`).
+    - [x] Inline Word-Level Redline view (`<ins>` emerald highlight for additions, `<del>` rose strikethrough for removals).
+    - [x] Side-by-Side (Split) 2-column view with synchronized line numbers and author headers.
+    - [x] Identical content zero-state message.
+  - [x] Integrated into `InstanceDetailPage.tsx`:
+    - [x] "Compare Revisions" button in primary action toolbar.
+    - [x] "Compare Revisions / Redline Diff" trigger in Version History section.
+  - [x] Frontend build: **Passed in 32.90s with 0 errors (`tsc -b && vite build` 100% clean)**.
 
 ## 8. Completed Feature: Operational Bottleneck & Cycle Time Analytics
 - [x] **Task 1: Backend Analytics Service (`analyticsService.js`)**

@@ -13,11 +13,13 @@ const adminInstancesRouter = require('./routes/admin/instances');
 const adminUsersRouter = require('./routes/admin/users');
 const adminRolesRouter = require('./routes/admin/roles');
 const adminGroupsRouter = require('./routes/admin/groups');
+const adminAnalyticsRouter = require('./routes/admin/analytics');
 const documentTypesPublicRouter = require('./routes/documentTypes');
 const filesRouter = require('./routes/files');
 const filesCallbackRouter = require('./routes/filesCallback');
 const usersRouter = require('./routes/users');
 const groupsRouter = require('./routes/groups');
+const notificationsRouter = require('./routes/notifications');
 const errorHandler = require('./middleware/errorHandler');
 
 const config = validateEnv();
@@ -51,10 +53,12 @@ app.use('/admin/instances', adminInstancesRouter);
 app.use('/admin/users', adminUsersRouter);
 app.use('/admin/roles', adminRolesRouter);
 app.use('/admin/groups', adminGroupsRouter);
+app.use('/admin/analytics', adminAnalyticsRouter);
 app.use('/files', filesRouter);
 app.use('/files/callback', filesCallbackRouter);
 app.use('/users', usersRouter);
 app.use('/groups', groupsRouter);
+app.use('/notifications', notificationsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

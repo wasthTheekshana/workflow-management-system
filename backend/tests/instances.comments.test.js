@@ -22,6 +22,7 @@ describe('workflow instance comments', () => {
   let actorEmail;
 
   beforeAll(async () => {
+    await db('notifications').where({ tenant_id: TENANT_ID }).del();
     await db('tenants').insert({ id: TENANT_ID, name: 'Comments Test Tenant' }).onConflict('id').ignore();
     await db('users')
       .insert([

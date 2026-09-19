@@ -34,6 +34,9 @@ export function WorkflowTemplateDetailPage() {
   const [assigneeUserId, setAssigneeUserId] = useState('');
   const [assigneeRoleId, setAssigneeRoleId] = useState('');
   const [assigneeGroupId, setAssigneeGroupId] = useState('');
+  const [assigneeGroupLevel, setAssigneeGroupLevel] = useState<number | ''>('');
+  const [slaHours, setSlaHours] = useState<number | ''>('');
+  const [consensusType, setConsensusType] = useState<'single' | 'all' | 'any'>('single');
   const [allowedActions, setAllowedActions] = useState<string[]>([...ALL_ACTIONS]);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +47,9 @@ export function WorkflowTemplateDetailPage() {
     setAssigneeUserId('');
     setAssigneeRoleId('');
     setAssigneeGroupId('');
+    setAssigneeGroupLevel('');
+    setSlaHours('');
+    setConsensusType('single');
     setAllowedActions([...ALL_ACTIONS]);
   }
 
@@ -56,7 +62,10 @@ export function WorkflowTemplateDetailPage() {
         assigneeUserId: assigneeType === 'user' ? assigneeUserId : undefined,
         assigneeRoleId: assigneeType === 'role' ? assigneeRoleId : undefined,
         assigneeGroupId: assigneeType === 'group' ? assigneeGroupId : undefined,
+        assigneeGroupLevel: assigneeType === 'group' && assigneeGroupLevel ? Number(assigneeGroupLevel) : null,
         allowedActions,
+        slaHours: slaHours ? Number(slaHours) : null,
+        consensusType,
       }),
     onSuccess: () => {
       resetForm();
@@ -74,7 +83,10 @@ export function WorkflowTemplateDetailPage() {
         assigneeUserId: assigneeType === 'user' ? assigneeUserId : undefined,
         assigneeRoleId: assigneeType === 'role' ? assigneeRoleId : undefined,
         assigneeGroupId: assigneeType === 'group' ? assigneeGroupId : undefined,
+        assigneeGroupLevel: assigneeType === 'group' && assigneeGroupLevel ? Number(assigneeGroupLevel) : null,
         allowedActions,
+        slaHours: slaHours ? Number(slaHours) : null,
+        consensusType,
       }),
     onSuccess: () => {
       resetForm();
@@ -107,6 +119,9 @@ export function WorkflowTemplateDetailPage() {
     setAssigneeUserId(stage.assignee_user_id ?? '');
     setAssigneeRoleId(stage.assignee_role_id ?? '');
     setAssigneeGroupId(stage.assignee_group_id ?? '');
+    setAssigneeGroupLevel(stage.assignee_group_level ?? '');
+    setSlaHours(stage.sla_hours ?? '');
+    setConsensusType(stage.consensus_type ?? 'single');
     setAllowedActions(stage.allowed_actions);
   }
 
@@ -120,7 +135,10 @@ export function WorkflowTemplateDetailPage() {
       return role ? `role: ${role.name}` : 'assigned role';
     }
     const group = groups?.find((g) => g.id === stage.assignee_group_id);
-    return group ? `group: ${group.name}` : 'assigned group';
+    const groupName = group ? group.name : 'assigned group';
+    return stage.assignee_group_level
+      ? `group: ${groupName} (Lv ${stage.assignee_group_level})`
+      : `group: ${groupName}`;
   }
 
   const isSaving = addStageMutation.isPending || updateStageMutation.isPending;
@@ -136,11 +154,30 @@ export function WorkflowTemplateDetailPage() {
       <ul className="mb-6 divide-y divide-gray-200 rounded border border-gray-200 bg-white">
         {workflowTemplate.stages.map((stage) => (
           <li key={stage.id} className="flex items-center justify-between px-4 py-3 text-sm">
-            <span>
+            <span className="flex flex-wrap items-center gap-1.5">
               <span className="font-medium">
                 {stage.stage_order}. {stage.name}
               </span>{' '}
               — {assigneeLabel(stage)} — actions: {stage.allowed_actions.join(', ')}
+              {stage.consensus_type === 'all' && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 border border-purple-200">
+                  AND Consensus (All Approvers)
+                </span>
+              )}
+              {stage.consensus_type === 'any' && (
+                <span className="ml-2 inline-flex items-center rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-700 border border-cyan-200">
+                  OR Consensus (Any Approver)
+                </span>
+              )}
+              {stage.sla_hours ? (
+                <span className="ml-2 inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200">
+                  SLA: {stage.sla_hours}h
+                </span>
+              ) : (
+                <span className="ml-2 inline-flex items-center rounded-full bg-gray-50 px-2 py-0.5 text-xs text-gray-400 border border-gray-200">
+                  No SLA
+                </span>
+              )}
             </span>
             <button onClick={() => startEditingStage(stage)} className="text-sm text-blue-700 hover:underline">
               Edit
@@ -243,23 +280,72 @@ export function WorkflowTemplateDetailPage() {
             </select>
           </label>
         ) : (
-          <label className="block text-sm">
-            Group
-            <select
-              required
-              value={assigneeGroupId}
-              onChange={(e) => setAssigneeGroupId(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-            >
-              <option value="">Select a group</option>
-              {groups?.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="space-y-3">
+            <label className="block text-sm">
+              Group
+              <select
+                required
+                value={assigneeGroupId}
+                onChange={(e) => setAssigneeGroupId(e.target.value)}
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+              >
+                <option value="">Select a group</option>
+                {groups?.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              Required Group Level (optional)
+              <select
+                value={assigneeGroupLevel}
+                onChange={(e) => setAssigneeGroupLevel(e.target.value ? Number(e.target.value) : '')}
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+              >
+                <option value="">Any Level (all group members can claim)</option>
+                <option value={1}>Level 1 (Junior / Staff)</option>
+                <option value={2}>Level 2 (Senior / Reviewer)</option>
+                <option value={3}>Level 3 (Lead / Manager)</option>
+                <option value={4}>Level 4 (Director / Head)</option>
+                <option value={5}>Level 5 (Executive)</option>
+              </select>
+            </label>
+          </div>
         )}
+
+        <label className="block text-sm">
+          SLA Target in Hours (optional)
+          <input
+            type="number"
+            min={1}
+            value={slaHours}
+            onChange={(e) => setSlaHours(e.target.value ? Number(e.target.value) : '')}
+            placeholder="e.g. 24 (leave blank for no SLA)"
+            className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+          />
+          <span className="text-xs text-gray-500">
+            Expected turnaround time for this stage before it is marked overdue.
+          </span>
+        </label>
+
+        <label className="block text-sm">
+          Consensus Policy
+          <select
+            value={consensusType}
+            onChange={(e) => setConsensusType(e.target.value as 'single' | 'all' | 'any')}
+            className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+          >
+            <option value="single">Single Assignee (Standard sequential claim & forward)</option>
+            <option value="all">AND Consensus (Require ALL eligible approvers to approve)</option>
+            <option value="any">OR Consensus (Require ANY single eligible approver to approve)</option>
+          </select>
+          <span className="text-xs text-gray-500">
+            Controls whether this stage advances on a single claim, requires unanimous group approval (AND), or accepts the first approval (OR).
+          </span>
+        </label>
+
         <fieldset className="text-sm">
           <legend className="mb-1 font-medium">Allowed actions</legend>
           {ALL_ACTIONS.map((action) => (

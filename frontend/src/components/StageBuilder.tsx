@@ -5,10 +5,14 @@ export interface StageRow {
   name: string;
   assigneeType: 'user' | 'group';
   assigneeId: string;
+  assigneeGroupLevel?: number | null;
+  slaHours?: number | null;
 }
 
 export function emptyStageRow(): StageRow {
   return { name: '', assigneeType: 'user', assigneeId: '' };
+  return { name: '', assigneeType: 'user', assigneeId: '', assigneeGroupLevel: null };
+  return { name: '', assigneeType: 'user', assigneeId: '', assigneeGroupLevel: null, slaHours: null };
 }
 
 interface StageBuilderProps {
@@ -49,7 +53,7 @@ export function StageBuilder({
                 type="radio"
                 name={`stage-${index}-assignee-type`}
                 checked={row.assigneeType === 'user'}
-                onChange={() => onUpdateRow(index, { assigneeType: 'user', assigneeId: '' })}
+                onChange={() => onUpdateRow(index, { assigneeType: 'user', assigneeId: '', assigneeGroupLevel: null })}
               />
               Person
             </label>
@@ -58,7 +62,7 @@ export function StageBuilder({
                 type="radio"
                 name={`stage-${index}-assignee-type`}
                 checked={row.assigneeType === 'group'}
-                onChange={() => onUpdateRow(index, { assigneeType: 'group', assigneeId: '' })}
+                onChange={() => onUpdateRow(index, { assigneeType: 'group', assigneeId: '', assigneeGroupLevel: null })}
               />
               Group
             </label>
@@ -82,6 +86,39 @@ export function StageBuilder({
                   </option>
                 ))}
           </select>
+          {row.assigneeType === 'group' && (
+            <select
+              value={row.assigneeGroupLevel ?? ''}
+              onChange={(e) =>
+                onUpdateRow(index, {
+                  assigneeGroupLevel: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+              className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+            >
+              <option value="">Any Level</option>
+              <option value={1}>Level 1 (Junior / Staff)</option>
+              <option value={2}>Level 2 (Senior / Reviewer)</option>
+              <option value={3}>Level 3 (Lead / Manager)</option>
+              <option value={4}>Level 4 (Director / Head)</option>
+              <option value={5}>Level 5 (Executive)</option>
+            </select>
+          )}
+          <label className="block text-xs">
+            SLA Target in Hours (optional)
+            <input
+              type="number"
+              min={1}
+              value={row.slaHours ?? ''}
+              onChange={(e) =>
+                onUpdateRow(index, {
+                  slaHours: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+              placeholder="e.g. 24"
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+            />
+          </label>
           {stageRows.length > 1 && (
             <button
               type="button"

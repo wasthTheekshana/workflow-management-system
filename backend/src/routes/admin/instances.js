@@ -13,6 +13,7 @@ router.get('/', async (req, res, next) => {
     const instances = await listInstancesForAdmin(req.user.tenantId, {
       status: req.query.status,
       documentTypeId: req.query.documentTypeId,
+      isOverdue: req.query.isOverdue,
     });
     res.status(200).json(instances);
   } catch (err) {

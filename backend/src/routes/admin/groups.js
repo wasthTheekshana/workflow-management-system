@@ -8,6 +8,7 @@ const {
   renameGroup,
   deleteGroup,
   addMember,
+  updateMemberLevel,
   removeMember,
 } = require('../../services/groupService');
 
@@ -58,7 +59,17 @@ router.delete('/:id', async (req, res, next) => {
 
 router.post('/:id/members', async (req, res, next) => {
   try {
-    await addMember(req.user.tenantId, req.params.id, req.body.user_id);
+    const userId = req.body.user_id || req.body.userId;
+    await addMember(req.user.tenantId, req.params.id, userId, req.body.level);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/:id/members/:userId', async (req, res, next) => {
+  try {
+    await updateMemberLevel(req.user.tenantId, req.params.id, req.params.userId, req.body.level);
     res.status(204).end();
   } catch (err) {
     next(err);

@@ -17,6 +17,7 @@ import { AdminInstancesPage } from './pages/admin/AdminInstancesPage';
 import { GroupsPage } from './pages/admin/GroupsPage';
 import { GroupDetailPage } from './pages/admin/GroupDetailPage';
 import { UsersPage } from './pages/admin/UsersPage';
+import { AnalyticsPage } from './pages/admin/AnalyticsPage';
 
 const queryClient = new QueryClient();
 
@@ -42,6 +43,7 @@ function App() {
                   <Route path="/admin/groups" element={<GroupsPage />} />
                   <Route path="/admin/groups/:id" element={<GroupDetailPage />} />
                   <Route path="/admin/users" element={<UsersPage />} />
+                  <Route path="/admin/analytics" element={<AnalyticsPage />} />
                 </Route>
               </Route>
             </Route>

@@ -12,6 +12,8 @@ const nonAdminToken = signToken({ sub: NON_ADMIN_ID, tenant_id: TENANT_ID, is_ad
 describe('/admin/groups', () => {
   beforeAll(async () => {
     await db('tenants').insert({ id: TENANT_ID, name: 'Admin Groups Test Tenant' }).onConflict('id').ignore();
+    await db('user_groups').where({ tenant_id: TENANT_ID }).del();
+    await db('groups').where({ tenant_id: TENANT_ID }).del();
     await db('users')
       .insert([
         { id: ADMIN_ID, tenant_id: TENANT_ID, email: 'ag-admin@example.com', password_hash: 'x', is_admin: true },

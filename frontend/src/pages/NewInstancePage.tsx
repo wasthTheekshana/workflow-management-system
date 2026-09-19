@@ -44,7 +44,12 @@ export function NewInstancePage() {
   const startMutation = useMutation({
     mutationFn: () => {
       const stages: AdhocStageInput[] | undefined = isAdhoc
-        ? stageRows.map((row) => ({ name: row.name, assigneeType: row.assigneeType, assigneeId: row.assigneeId }))
+        ? stageRows.map((row) => ({
+            name: row.name,
+            assigneeType: row.assigneeType,
+            assigneeId: row.assigneeId,
+            assigneeGroupLevel: row.assigneeGroupLevel,
+          }))
         : undefined;
       return startInstance(documentTypeId, stages);
     },
@@ -63,6 +68,7 @@ export function NewInstancePage() {
           name: row.name,
           assigneeType: row.assigneeType,
           assigneeId: row.assigneeId,
+          assigneeGroupLevel: row.assigneeGroupLevel,
         })),
       }),
     onSuccess: (instance) => navigate(`/instances/${instance.id}`),

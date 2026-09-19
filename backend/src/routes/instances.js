@@ -1,4 +1,5 @@
 const express = require('express');
+const db = require('../config/db');
 const { authenticate } = require('../middleware/auth');
 const { upload } = require('../config/multerUpload');
 const {
@@ -6,6 +7,7 @@ const {
   startInstanceFromOwnDocument,
   getInstanceDetail,
   claimInstance,
+  unclaimInstance,
   addInstanceVersion,
   addInstanceContentVersion,
   getCurrentContent,
@@ -14,8 +16,16 @@ const {
   sendBackInstance,
   rejectInstance,
   resubmitInstance,
+  cancelInstance,
+  getStageApprovals,
 } = require('../services/workflowInstanceService');
 const { listComments, addComment } = require('../services/commentService');
+const {
+  listAttachments,
+  addAttachment,
+  getAttachmentFile,
+  deleteAttachment,
+} = require('../services/attachmentService');
 const { listMyTasks, getInstanceHistory } = require('../services/dashboardService');
 const { buildInstanceEditConfig } = require('../services/documentEditingService');
 
@@ -78,7 +88,40 @@ router.post('/from-document', upload.single('file'), async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const { instance, stage, documentType } = await getInstanceDetail(req.user.tenantId, req.params.id);
-    res.status(200).json({ ...instance, currentStage: stage, contentFormat: documentType.content_format });
+    const workflowStages = await db('workflow_stages')
+      .where({ tenant_id: req.user.tenantId, workflow_template_id: instance.workflow_template_id })
+      .orderBy('stage_order', 'asc');
+    const isOverdue = Boolean(
+      instance.stage_due_at &&
+      new Date(instance.stage_due_at) < new Date() &&
+      instance.status === 'in_progress'
+    );
+    const stageApprovals = await getStageApprovals(
+      req.user.tenantId,
+      req.params.id,
+      instance.current_stage_order,
+    );
+    res.status(200).json({
+      ...instance,
+      is_overdue: isOverdue,
+      currentStage: stage,
+      contentFormat: documentType.content_format,
+      workflowStages,
+      stageApprovals,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/stage-approvals', async (req, res, next) => {
+  try {
+    const approvals = await getStageApprovals(
+      req.user.tenantId,
+      req.params.id,
+      req.query.stageOrder,
+    );
+    res.status(200).json(approvals);
   } catch (err) {
     next(err);
   }
@@ -87,6 +130,30 @@ router.get('/:id', async (req, res, next) => {
 router.post('/:id/claim', async (req, res, next) => {
   try {
     const instance = await claimInstance(req.user.tenantId, req.user.userId, req.params.id);
+    res.status(200).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/unclaim', async (req, res, next) => {
+  try {
+    const instance = await unclaimInstance(req.user.tenantId, req.user.userId, req.params.id, req.user.isAdmin);
+    res.status(200).json(instance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/cancel', async (req, res, next) => {
+  try {
+    const instance = await cancelInstance(
+      req.user.tenantId,
+      req.user.userId,
+      req.user.isAdmin,
+      req.params.id,
+      req.body.comment,
+    );
     res.status(200).json(instance);
   } catch (err) {
     next(err);
@@ -148,7 +215,13 @@ router.post('/:id/forward', async (req, res, next) => {
 
 router.post('/:id/send-back', async (req, res, next) => {
   try {
-    const instance = await sendBackInstance(req.user.tenantId, req.user.userId, req.params.id, req.body.comment);
+    const instance = await sendBackInstance(
+      req.user.tenantId,
+      req.user.userId,
+      req.params.id,
+      req.body.comment,
+      req.body.targetStageOrder,
+    );
     res.status(200).json(instance);
   } catch (err) {
     next(err);
@@ -192,6 +265,57 @@ router.post('/:id/comments', async (req, res, next) => {
       req.body.body,
     );
     res.status(201).json(comment);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/attachments', async (req, res, next) => {
+  try {
+    const attachments = await listAttachments(req.user.tenantId, req.params.id);
+    res.status(200).json(attachments);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/attachments', upload.single('file'), async (req, res, next) => {
+  try {
+    const attachment = await addAttachment(
+      req.user.tenantId,
+      req.user.userId,
+      req.params.id,
+      req.file,
+    );
+    res.status(201).json(attachment);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/attachments/:attachmentId/download', async (req, res, next) => {
+  try {
+    const { attachment, absolutePath } = await getAttachmentFile(
+      req.user.tenantId,
+      req.params.id,
+      req.params.attachmentId,
+    );
+    res.download(absolutePath, attachment.file_name);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id/attachments/:attachmentId', async (req, res, next) => {
+  try {
+    await deleteAttachment(
+      req.user.tenantId,
+      req.user.userId,
+      req.user.isAdmin,
+      req.params.id,
+      req.params.attachmentId,
+    );
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { NotificationCenter } from './NotificationCenter';
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `rounded px-3 py-2 text-sm ${isActive ? 'bg-blue-100 text-blue-800' : 'text-gray-700 hover:bg-gray-100'}`;
@@ -38,12 +39,19 @@ export function Layout() {
               <NavLink to="/admin/users" className={linkClass}>
                 Users
               </NavLink>
+              <NavLink to="/admin/analytics" className={linkClass}>
+                Analytics
+              </NavLink>
             </>
           )}
         </div>
-        <button onClick={logout} className="text-sm text-gray-600 hover:text-gray-900">
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          <NotificationCenter />
+          <div className="h-4 w-px bg-gray-200"></div>
+          <button onClick={logout} className="text-sm text-gray-600 hover:text-gray-900 font-medium">
+            Sign out
+          </button>
+        </div>
       </nav>
       <main className="p-6">
         <Outlet />

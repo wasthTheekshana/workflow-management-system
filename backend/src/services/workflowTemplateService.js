@@ -28,8 +28,22 @@ async function getWorkflowTemplate(tenantId, workflowTemplateId) {
 
 const ALLOWED_ASSIGNEE_TYPES = ['user', 'role', 'group'];
 const ALLOWED_ACTIONS = ['forward', 'send_back', 'reject'];
+const ALLOWED_CONSENSUS_TYPES = ['single', 'all', 'any'];
 
-async function validateStageAssignment(tenantId, { assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, allowedActions }) {
+function parseConsensusType(type) {
+  if (type === undefined || type === null || type === '') {
+    return 'single';
+  }
+  if (!ALLOWED_CONSENSUS_TYPES.includes(type)) {
+    throw new AppError(400, `consensusType must be one of: ${ALLOWED_CONSENSUS_TYPES.join(', ')}`);
+  }
+  return type;
+}
+
+async function validateStageAssignment(
+  tenantId,
+  { assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, assigneeGroupLevel, allowedActions },
+) {
   if (!ALLOWED_ASSIGNEE_TYPES.includes(assigneeType)) {
     throw new AppError(400, `assigneeType must be one of: ${ALLOWED_ASSIGNEE_TYPES.join(', ')}`);
   }
@@ -52,6 +66,12 @@ async function validateStageAssignment(tenantId, { assigneeType, assigneeUserId,
     if (!group) {
       throw new AppError(400, 'assigneeGroupId does not belong to this tenant');
     }
+    if (assigneeGroupLevel !== undefined && assigneeGroupLevel !== null && assigneeGroupLevel !== '') {
+      const level = Number(assigneeGroupLevel);
+      if (!Number.isInteger(level) || level < 1) {
+        throw new AppError(400, 'assigneeGroupLevel must be a positive integer');
+      }
+    }
   }
 
   const actions = Array.isArray(allowedActions) && allowedActions.length > 0 ? allowedActions : ALLOWED_ACTIONS;
@@ -71,7 +91,20 @@ async function addWorkflowStage(tenantId, workflowTemplateId, input) {
     throw new AppError(404, 'Workflow template not found');
   }
 
-  const { stageOrder, name, assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, allowedActions } = input;
+  const {
+    stageOrder,
+    name,
+    assigneeType,
+    assigneeUserId,
+    assigneeRoleId,
+    assigneeGroupId,
+    assigneeGroupLevel,
+    allowedActions,
+    slaHours,
+    consensusType,
+  } = input;
+
+  const validConsensusType = parseConsensusType(consensusType);
 
   if (!Number.isInteger(stageOrder) || stageOrder < 1) {
     throw new AppError(400, 'stageOrder must be a positive integer');
@@ -82,8 +115,18 @@ async function addWorkflowStage(tenantId, workflowTemplateId, input) {
     assigneeUserId,
     assigneeRoleId,
     assigneeGroupId,
+    assigneeGroupLevel,
     allowedActions,
   });
+
+  let parsedSlaHours = null;
+  if (slaHours !== undefined && slaHours !== null && slaHours !== '') {
+    const num = Number(slaHours);
+    if (!Number.isInteger(num) || num <= 0) {
+      throw new AppError(400, 'slaHours must be a positive integer');
+    }
+    parsedSlaHours = num;
+  }
 
   const existingStage = await db('workflow_stages')
     .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: stageOrder })
@@ -102,7 +145,13 @@ async function addWorkflowStage(tenantId, workflowTemplateId, input) {
       assignee_user_id: assigneeType === 'user' ? assigneeUserId : null,
       assignee_role_id: assigneeType === 'role' ? assigneeRoleId : null,
       assignee_group_id: assigneeType === 'group' ? assigneeGroupId : null,
+      assignee_group_level:
+        assigneeType === 'group' && assigneeGroupLevel !== undefined && assigneeGroupLevel !== null && assigneeGroupLevel !== ''
+          ? Number(assigneeGroupLevel)
+          : null,
       allowed_actions: JSON.stringify(actions),
+      sla_hours: parsedSlaHours,
+      consensus_type: validConsensusType,
     })
     .returning('*');
 
@@ -128,15 +177,37 @@ async function updateWorkflowStage(tenantId, workflowTemplateId, stageOrder, inp
     throw new AppError(404, 'Stage not found');
   }
 
-  const { name, assigneeType, assigneeUserId, assigneeRoleId, assigneeGroupId, allowedActions } = input;
+  const {
+    name,
+    assigneeType,
+    assigneeUserId,
+    assigneeRoleId,
+    assigneeGroupId,
+    assigneeGroupLevel,
+    allowedActions,
+    slaHours,
+    consensusType,
+  } = input;
   assertRequiredString(name, 'name');
   const actions = await validateStageAssignment(tenantId, {
     assigneeType,
     assigneeUserId,
     assigneeRoleId,
     assigneeGroupId,
+    assigneeGroupLevel,
     allowedActions,
   });
+
+  const validConsensusType = parseConsensusType(consensusType);
+
+  let parsedSlaHours = null;
+  if (slaHours !== undefined && slaHours !== null && slaHours !== '') {
+    const num = Number(slaHours);
+    if (!Number.isInteger(num) || num <= 0) {
+      throw new AppError(400, 'slaHours must be a positive integer');
+    }
+    parsedSlaHours = num;
+  }
 
   const [stage] = await db('workflow_stages')
     .where({ tenant_id: tenantId, workflow_template_id: workflowTemplateId, stage_order: stageOrder })
@@ -146,7 +217,13 @@ async function updateWorkflowStage(tenantId, workflowTemplateId, stageOrder, inp
       assignee_user_id: assigneeType === 'user' ? assigneeUserId : null,
       assignee_role_id: assigneeType === 'role' ? assigneeRoleId : null,
       assignee_group_id: assigneeType === 'group' ? assigneeGroupId : null,
+      assignee_group_level:
+        assigneeType === 'group' && assigneeGroupLevel !== undefined && assigneeGroupLevel !== null && assigneeGroupLevel !== ''
+          ? Number(assigneeGroupLevel)
+          : null,
       allowed_actions: JSON.stringify(actions),
+      sla_hours: parsedSlaHours,
+      consensus_type: validConsensusType,
     })
     .returning('*');
 

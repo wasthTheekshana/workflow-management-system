@@ -16,7 +16,10 @@ export interface WorkflowStage {
   assignee_user_id: string | null;
   assignee_role_id: string | null;
   assignee_group_id: string | null;
+  assignee_group_level: number | null;
   allowed_actions: string[];
+  sla_hours?: number | null;
+  consensus_type?: 'single' | 'all' | 'any';
   created_at: string;
 }
 
@@ -43,7 +46,10 @@ export interface AddStageInput {
   assigneeUserId?: string;
   assigneeRoleId?: string;
   assigneeGroupId?: string;
+  assigneeGroupLevel?: number | null;
   allowedActions: string[];
+  slaHours?: number | null;
+  consensusType?: 'single' | 'all' | 'any';
 }
 
 export function addWorkflowStage(workflowTemplateId: string, input: AddStageInput): Promise<WorkflowStage> {
@@ -59,7 +65,10 @@ export interface UpdateStageInput {
   assigneeUserId?: string;
   assigneeRoleId?: string;
   assigneeGroupId?: string;
+  assigneeGroupLevel?: number | null;
   allowedActions: string[];
+  slaHours?: number | null;
+  consensusType?: 'single' | 'all' | 'any';
 }
 
 export function updateWorkflowStage(

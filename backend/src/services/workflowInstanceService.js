@@ -13,6 +13,11 @@ const ADHOC_DEFAULT_ALLOWED_ACTIONS = ['forward', 'send_back', 'reject'];
 const OWN_DOCUMENT_CONTENT_FORMATS = ['docx', 'richtext'];
 const OWN_DOCUMENT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+function calculateStageDueAt(stage, enteredAt = new Date()) {
+  if (!stage || !stage.sla_hours) return null;
+  return new Date(enteredAt.getTime() + stage.sla_hours * 3600 * 1000);
+}
+
 async function createAdhocWorkflowTemplate(trx, tenantId, userId, isAdmin, documentType, stages) {
   if (!Array.isArray(stages) || stages.length === 0) {
     throw new AppError(400, 'stages must be a non-empty array for an ad-hoc document type');
@@ -35,7 +40,45 @@ async function createAdhocWorkflowTemplate(trx, tenantId, userId, isAdmin, docum
     if (!visibleIds.has(stage.assigneeId)) {
       throw new AppError(400, `stages[].assigneeId is not visible to you (${stage.assigneeType})`);
     }
-    validatedStages.push({ name: stage.name.trim(), assigneeType: stage.assigneeType, assigneeId: stage.assigneeId });
+    let assigneeGroupLevel = null;
+    if (
+      stage.assigneeType === 'group' &&
+      stage.assigneeGroupLevel !== undefined &&
+      stage.assigneeGroupLevel !== null &&
+      stage.assigneeGroupLevel !== ''
+    ) {
+      const lvl = Number(stage.assigneeGroupLevel);
+      if (!Number.isInteger(lvl) || lvl < 1) {
+        throw new AppError(400, 'stages[].assigneeGroupLevel must be a positive integer');
+      }
+      assigneeGroupLevel = lvl;
+    }
+
+    let slaHours = null;
+    if (stage.slaHours !== undefined && stage.slaHours !== null && stage.slaHours !== '') {
+      const num = Number(stage.slaHours);
+      if (!Number.isInteger(num) || num <= 0) {
+        throw new AppError(400, 'stages[].slaHours must be a positive integer');
+      }
+      slaHours = num;
+    }
+
+    let consensusType = 'single';
+    if (stage.consensusType !== undefined && stage.consensusType !== null && stage.consensusType !== '') {
+      if (!['single', 'all', 'any'].includes(stage.consensusType)) {
+        throw new AppError(400, 'stages[].consensusType must be one of: single, all, any');
+      }
+      consensusType = stage.consensusType;
+    }
+
+    validatedStages.push({
+      name: stage.name.trim(),
+      assigneeType: stage.assigneeType,
+      assigneeId: stage.assigneeId,
+      assigneeGroupLevel,
+      slaHours,
+      consensusType,
+    });
   }
 
   const [workflowTemplate] = await trx('workflow_templates')
@@ -55,7 +98,10 @@ async function createAdhocWorkflowTemplate(trx, tenantId, userId, isAdmin, docum
       assignee_type: stage.assigneeType,
       assignee_user_id: stage.assigneeType === 'user' ? stage.assigneeId : null,
       assignee_group_id: stage.assigneeType === 'group' ? stage.assigneeId : null,
+      assignee_group_level: stage.assigneeType === 'group' ? stage.assigneeGroupLevel : null,
       allowed_actions: JSON.stringify(ADHOC_DEFAULT_ALLOWED_ACTIONS),
+      sla_hours: stage.slaHours,
+      consensus_type: stage.consensusType,
     })),
   );
 
@@ -87,6 +133,128 @@ async function getInstanceDetail(tenantId, instanceId) {
     .first();
 
   return { instance, documentType, stage };
+}
+
+async function getEligibleApprovers(tenantId, stage) {
+  if (!stage) return [];
+  if (stage.assignee_type === 'user') {
+    if (!stage.assignee_user_id) return [];
+    const user = await db('users').where({ tenant_id: tenantId, id: stage.assignee_user_id }).first();
+    return user ? [{ id: user.id, email: user.email, name: user.email, type: 'user' }] : [];
+  }
+  if (stage.assignee_type === 'role') {
+    if (!stage.assignee_role_id) return [];
+    const roleUsers = await db('user_roles')
+      .join('users', function () {
+        this.on('users.id', '=', 'user_roles.user_id')
+          .andOn('users.tenant_id', '=', 'user_roles.tenant_id');
+      })
+      .where({ 'user_roles.tenant_id': tenantId, 'user_roles.role_id': stage.assignee_role_id })
+      .select('users.id', 'users.email')
+      .orderBy('users.email', 'asc');
+    return roleUsers.map((u) => ({ id: u.id, email: u.email, name: u.email, type: 'role' }));
+  }
+  if (stage.assignee_type === 'group') {
+    if (!stage.assignee_group_id) return [];
+    const query = db('user_groups')
+      .join('users', function () {
+        this.on('users.id', '=', 'user_groups.user_id')
+          .andOn('users.tenant_id', '=', 'user_groups.tenant_id');
+      })
+      .where({ 'user_groups.tenant_id': tenantId, 'user_groups.group_id': stage.assignee_group_id })
+      .select('users.id', 'users.email', 'user_groups.level')
+      .orderBy('users.email', 'asc');
+    if (stage.assignee_group_level) {
+      query.andWhere('user_groups.level', stage.assignee_group_level);
+    }
+    const groupUsers = await query;
+    return groupUsers.map((u) => ({ id: u.id, email: u.email, name: u.email, level: u.level, type: 'group' }));
+  }
+  return [];
+}
+
+async function isUserEligibleApprover(tenantId, stage, userId, isAdmin = false) {
+  if (!stage) return false;
+  if (isAdmin) return true;
+  if (stage.assignee_type === 'user') {
+    return stage.assignee_user_id === userId;
+  }
+  if (stage.assignee_type === 'role') {
+    const hasRole = await db('user_roles')
+      .where({ tenant_id: tenantId, user_id: userId, role_id: stage.assignee_role_id })
+      .first();
+    return Boolean(hasRole);
+  }
+  if (stage.assignee_type === 'group') {
+    const q = { tenant_id: tenantId, user_id: userId, group_id: stage.assignee_group_id };
+    if (stage.assignee_group_level) {
+      q.level = stage.assignee_group_level;
+    }
+    const isMember = await db('user_groups').where(q).first();
+    return Boolean(isMember);
+  }
+  return false;
+}
+
+async function getStageApprovals(tenantId, instanceId, stageOrder) {
+  const { instance } = await getInstanceDetail(tenantId, instanceId);
+  const targetStageOrder = stageOrder !== undefined && stageOrder !== null ? Number(stageOrder) : instance.current_stage_order;
+
+  const stage = await db('workflow_stages')
+    .where({ tenant_id: tenantId, workflow_template_id: instance.workflow_template_id, stage_order: targetStageOrder })
+    .first();
+
+  const approvals = await db('instance_stage_approvals')
+    .join('users', function () {
+      this.on('users.id', '=', 'instance_stage_approvals.user_id')
+        .andOn('users.tenant_id', '=', 'instance_stage_approvals.tenant_id');
+    })
+    .where({
+      'instance_stage_approvals.tenant_id': tenantId,
+      'instance_stage_approvals.workflow_instance_id': instanceId,
+      'instance_stage_approvals.stage_order': targetStageOrder,
+    })
+    .select(
+      'instance_stage_approvals.id',
+      'instance_stage_approvals.user_id',
+      'users.email as user_email',
+      'instance_stage_approvals.decision',
+      'instance_stage_approvals.comment',
+      'instance_stage_approvals.created_at',
+    )
+    .orderBy('instance_stage_approvals.created_at', 'asc');
+
+  const eligibleApprovers = stage ? await getEligibleApprovers(tenantId, stage) : [];
+  const consensusType = stage ? stage.consensus_type || 'single' : 'single';
+
+  const approvalMap = new Map(approvals.map((a) => [a.user_id, a]));
+  const approversStatus = eligibleApprovers.map((ea) => {
+    const app = approvalMap.get(ea.id);
+    return {
+      id: ea.id,
+      email: ea.email,
+      level: ea.level,
+      hasApproved: Boolean(app && app.decision === 'approved'),
+      decision: app ? app.decision : null,
+      comment: app ? app.comment : null,
+      approvedAt: app ? app.created_at : null,
+    };
+  });
+
+  const approvedCount = approversStatus.filter((a) => a.hasApproved).length;
+  const totalRequired = consensusType === 'any' ? 1 : Math.max(1, eligibleApprovers.length);
+  const consensusReached = consensusType === 'any' ? approvedCount >= 1 : approvedCount >= totalRequired;
+
+  return {
+    stageOrder: targetStageOrder,
+    stageName: stage ? stage.name : `Stage ${targetStageOrder}`,
+    consensusType,
+    totalRequired,
+    approvedCount,
+    consensusReached,
+    approvals,
+    eligibleApprovers: approversStatus,
+  };
 }
 
 async function startInstance(tenantId, userId, isAdmin, documentTypeId, stages) {
@@ -126,6 +294,9 @@ async function startInstance(tenantId, userId, isAdmin, documentTypeId, stages) 
       throw new AppError(400, 'The linked workflow template has no stages configured yet');
     }
 
+    const now = new Date();
+    const stageDueAt = calculateStageDueAt(stage, now);
+
     const [insertedInstance] = await trx('workflow_instances')
       .insert({
         tenant_id: tenantId,
@@ -135,6 +306,8 @@ async function startInstance(tenantId, userId, isAdmin, documentTypeId, stages) 
         current_stage_order: 1,
         status: 'in_progress',
         created_by: userId,
+        stage_entered_at: now,
+        stage_due_at: stageDueAt,
       })
       .returning('*');
 
@@ -209,6 +382,9 @@ async function startInstanceFromOwnDocument(tenantId, userId, isAdmin, { name, c
       throw new AppError(400, 'The ad-hoc workflow template has no stages configured yet');
     }
 
+    const now = new Date();
+    const stageDueAt = calculateStageDueAt(stage, now);
+
     const [insertedInstance] = await trx('workflow_instances')
       .insert({
         tenant_id: tenantId,
@@ -218,6 +394,8 @@ async function startInstanceFromOwnDocument(tenantId, userId, isAdmin, { name, c
         current_stage_order: 1,
         status: 'in_progress',
         created_by: userId,
+        stage_entered_at: now,
+        stage_due_at: stageDueAt,
       })
       .returning('*');
 
@@ -241,6 +419,12 @@ async function claimInstance(tenantId, userId, instanceId) {
   if (stage.assignee_type !== 'role' && stage.assignee_type !== 'group') {
     throw new AppError(400, 'The current stage is not role- or group-assigned; claiming does not apply');
   }
+  if (stage.consensus_type === 'all') {
+    throw new AppError(
+      400,
+      'This stage uses parallel AND consensus; claiming is not required - approvers can review and approve directly',
+    );
+  }
   if (instance.claimed_by) {
     throw new AppError(400, 'This instance has already been claimed');
   }
@@ -253,11 +437,22 @@ async function claimInstance(tenantId, userId, instanceId) {
       throw new AppError(403, 'You do not hold the role assigned to this stage');
     }
   } else {
-    const isMember = await db('user_groups')
-      .where({ tenant_id: tenantId, user_id: userId, group_id: stage.assignee_group_id })
-      .first();
+    const memberQuery = {
+      tenant_id: tenantId,
+      user_id: userId,
+      group_id: stage.assignee_group_id,
+    };
+    if (stage.assignee_group_level) {
+      memberQuery.level = stage.assignee_group_level;
+    }
+    const isMember = await db('user_groups').where(memberQuery).first();
     if (!isMember) {
-      throw new AppError(403, 'You are not a member of the group assigned to this stage');
+      throw new AppError(
+        403,
+        stage.assignee_group_level
+          ? `You are not a Level ${stage.assignee_group_level} member of the group assigned to this stage`
+          : 'You are not a member of the group assigned to this stage',
+      );
     }
   }
 
@@ -270,6 +465,39 @@ async function claimInstance(tenantId, userId, instanceId) {
     tenant_id: tenantId,
     workflow_instance_id: instanceId,
     action_type: 'claim',
+    from_stage_order: instance.current_stage_order,
+    to_stage_order: instance.current_stage_order,
+    actor_id: userId,
+  });
+
+  return updated;
+}
+
+async function unclaimInstance(tenantId, userId, instanceId, isAdmin = false) {
+  const { instance, stage } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'in_progress') {
+    throw new AppError(400, 'Only in-progress instances can be unclaimed');
+  }
+  if (stage.assignee_type !== 'role' && stage.assignee_type !== 'group') {
+    throw new AppError(400, 'The current stage is not role- or group-assigned; unclaiming does not apply');
+  }
+  if (!instance.claimed_by) {
+    throw new AppError(400, 'This instance is not currently claimed');
+  }
+  if (instance.claimed_by !== userId && !isAdmin) {
+    throw new AppError(403, 'You are not the claimant of this instance');
+  }
+
+  const [updated] = await db('workflow_instances')
+    .where({ tenant_id: tenantId, id: instanceId })
+    .update({ claimed_by: null })
+    .returning('*');
+
+  await db('stage_actions').insert({
+    tenant_id: tenantId,
+    workflow_instance_id: instanceId,
+    action_type: 'unclaim',
     from_stage_order: instance.current_stage_order,
     to_stage_order: instance.current_stage_order,
     actor_id: userId,
@@ -403,8 +631,103 @@ async function forwardInstance(tenantId, userId, instanceId, comment) {
   if (!stage.allowed_actions.includes('forward')) {
     throw new AppError(400, 'The current stage does not allow forwarding');
   }
-  if (!canAct(stage, instance, userId)) {
-    throw new AppError(403, 'You are not authorized to act on this instance right now');
+
+  const consensusType = stage.consensus_type || 'single';
+
+  if (consensusType === 'all' || consensusType === 'any') {
+    const eligible = await isUserEligibleApprover(tenantId, stage, userId);
+    if (!eligible) {
+      throw new AppError(403, 'You are not authorized to act on this instance right now');
+    }
+
+    const existingApproval = await db('instance_stage_approvals')
+      .where({
+        tenant_id: tenantId,
+        workflow_instance_id: instanceId,
+        stage_order: instance.current_stage_order,
+        user_id: userId,
+      })
+      .first();
+
+    if (existingApproval && existingApproval.decision === 'approved') {
+      throw new AppError(400, 'You have already submitted an approval for this stage');
+    }
+
+    await db('instance_stage_approvals')
+      .insert({
+        tenant_id: tenantId,
+        workflow_instance_id: instanceId,
+        stage_order: instance.current_stage_order,
+        user_id: userId,
+        decision: 'approved',
+        comment: comment || null,
+      })
+      .onConflict(['tenant_id', 'workflow_instance_id', 'stage_order', 'user_id'])
+      .merge({
+        decision: 'approved',
+        comment: comment || null,
+        created_at: db.fn.now(),
+      });
+
+    await db('stage_actions').insert({
+      tenant_id: tenantId,
+      workflow_instance_id: instanceId,
+      action_type: 'approval_recorded',
+      from_stage_order: instance.current_stage_order,
+      to_stage_order: instance.current_stage_order,
+      actor_id: userId,
+      comment: comment || null,
+    });
+
+    const eligibleApprovers = await getEligibleApprovers(tenantId, stage);
+    const totalRequired = consensusType === 'any' ? 1 : Math.max(1, eligibleApprovers.length);
+
+    const stageApprovals = await db('instance_stage_approvals')
+      .where({
+        tenant_id: tenantId,
+        workflow_instance_id: instanceId,
+        stage_order: instance.current_stage_order,
+        decision: 'approved',
+      });
+
+    const approvedUserIds = new Set(stageApprovals.map((a) => a.user_id));
+    const approvedCount = consensusType === 'any'
+      ? stageApprovals.length
+      : eligibleApprovers.filter((u) => approvedUserIds.has(u.id)).length;
+
+    const consensusReached = consensusType === 'any' ? stageApprovals.length >= 1 : approvedCount >= totalRequired;
+
+    if (!consensusReached) {
+      return {
+        ...instance,
+        consensus: {
+          type: consensusType,
+          reached: false,
+          approvedCount,
+          totalRequired,
+        },
+      };
+    }
+  } else {
+    if (!canAct(stage, instance, userId)) {
+      throw new AppError(403, 'You are not authorized to act on this instance right now');
+    }
+
+    await db('instance_stage_approvals')
+      .insert({
+        tenant_id: tenantId,
+        workflow_instance_id: instanceId,
+        stage_order: instance.current_stage_order,
+        user_id: userId,
+        decision: 'approved',
+        comment: comment || null,
+      })
+      .onConflict(['tenant_id', 'workflow_instance_id', 'stage_order', 'user_id'])
+      .merge({
+        decision: 'approved',
+        comment: comment || null,
+        created_at: db.fn.now(),
+      });
   }
 
   const nextStage = await db('workflow_stages')
@@ -415,9 +738,18 @@ async function forwardInstance(tenantId, userId, instanceId, comment) {
     })
     .first();
 
-  const updates = nextStage
-    ? { current_stage_order: nextStage.stage_order, claimed_by: null }
-    : { status: 'completed' };
+  const now = new Date();
+  let updates;
+  if (nextStage) {
+    updates = {
+      current_stage_order: nextStage.stage_order,
+      claimed_by: null,
+      stage_entered_at: now,
+      stage_due_at: calculateStageDueAt(nextStage, now),
+    };
+  } else {
+    updates = { status: 'completed', stage_due_at: null };
+  }
 
   const [updated] = await db('workflow_instances')
     .where({ tenant_id: tenantId, id: instanceId })
@@ -445,10 +777,16 @@ async function forwardInstance(tenantId, userId, instanceId, comment) {
     });
   }
 
-  return updated;
+  return {
+    ...updated,
+    consensus: {
+      type: consensusType,
+      reached: true,
+    },
+  };
 }
 
-async function sendBackInstance(tenantId, userId, instanceId, comment) {
+async function sendBackInstance(tenantId, userId, instanceId, comment, targetStageOrder) {
   const { instance, documentType, stage } = await getInstanceDetail(tenantId, instanceId);
 
   if (instance.status !== 'in_progress') {
@@ -457,18 +795,64 @@ async function sendBackInstance(tenantId, userId, instanceId, comment) {
   if (!stage.allowed_actions.includes('send_back')) {
     throw new AppError(400, 'The current stage does not allow sending back');
   }
-  if (!canAct(stage, instance, userId)) {
-    throw new AppError(403, 'You are not authorized to act on this instance right now');
+
+  const consensusType = stage.consensus_type || 'single';
+  if (consensusType === 'all' || consensusType === 'any') {
+    const eligible = await isUserEligibleApprover(tenantId, stage, userId);
+    if (!eligible) {
+      throw new AppError(403, 'You are not authorized to act on this instance right now');
+    }
+  } else {
+    if (!canAct(stage, instance, userId)) {
+      throw new AppError(403, 'You are not authorized to act on this instance right now');
+    }
   }
+
   if (instance.current_stage_order <= 1) {
     throw new AppError(400, 'Cannot send back from the first stage');
   }
 
-  const targetStageOrder = instance.current_stage_order - 1;
+  let resolvedTargetStageOrder;
+  if (targetStageOrder !== undefined && targetStageOrder !== null && targetStageOrder !== '') {
+    const orderNum = Number(targetStageOrder);
+    if (!Number.isInteger(orderNum) || orderNum < 1 || orderNum >= instance.current_stage_order) {
+      throw new AppError(
+        400,
+        `targetStageOrder must be an integer between 1 and ${instance.current_stage_order - 1}`,
+      );
+    }
+    resolvedTargetStageOrder = orderNum;
+  } else {
+    resolvedTargetStageOrder = instance.current_stage_order - 1;
+  }
 
+  const targetStage = await db('workflow_stages')
+    .where({
+      tenant_id: tenantId,
+      workflow_template_id: instance.workflow_template_id,
+      stage_order: resolvedTargetStageOrder,
+    })
+    .first();
+
+  if (!targetStage) {
+    throw new AppError(400, `Target stage order ${resolvedTargetStageOrder} does not exist in this workflow`);
+  }
+
+  // Clear stage approvals for stages being sent back to and after
+  await db('instance_stage_approvals')
+    .where({ tenant_id: tenantId, workflow_instance_id: instanceId })
+    .where('stage_order', '>=', resolvedTargetStageOrder)
+    .del();
+
+  const now = new Date();
   const [updated] = await db('workflow_instances')
     .where({ tenant_id: tenantId, id: instanceId })
-    .update({ current_stage_order: targetStageOrder, claimed_by: null })
+    .update({
+      current_stage_order: resolvedTargetStageOrder,
+      claimed_by: null,
+      stage_entered_at: now,
+      stage_due_at: calculateStageDueAt(targetStage, now),
+    })
     .returning('*');
 
   await db('stage_actions').insert({
@@ -476,14 +860,11 @@ async function sendBackInstance(tenantId, userId, instanceId, comment) {
     workflow_instance_id: instanceId,
     action_type: 'send_back',
     from_stage_order: instance.current_stage_order,
-    to_stage_order: targetStageOrder,
+    to_stage_order: resolvedTargetStageOrder,
     actor_id: userId,
     comment: comment || null,
   });
 
-  const targetStage = await db('workflow_stages')
-    .where({ tenant_id: tenantId, workflow_template_id: instance.workflow_template_id, stage_order: targetStageOrder })
-    .first();
   await notifyStage(tenantId, instanceId, 'sent_back', targetStage, {
     documentTypeName: documentType.name,
     stageName: targetStage.name,
@@ -501,13 +882,38 @@ async function rejectInstance(tenantId, userId, instanceId, comment) {
   if (!stage.allowed_actions.includes('reject')) {
     throw new AppError(400, 'The current stage does not allow rejecting');
   }
-  if (!canAct(stage, instance, userId)) {
-    throw new AppError(403, 'You are not authorized to act on this instance right now');
+
+  const consensusType = stage.consensus_type || 'single';
+  if (consensusType === 'all' || consensusType === 'any') {
+    const eligible = await isUserEligibleApprover(tenantId, stage, userId);
+    if (!eligible) {
+      throw new AppError(403, 'You are not authorized to act on this instance right now');
+    }
+  } else {
+    if (!canAct(stage, instance, userId)) {
+      throw new AppError(403, 'You are not authorized to act on this instance right now');
+    }
   }
+
+  await db('instance_stage_approvals')
+    .insert({
+      tenant_id: tenantId,
+      workflow_instance_id: instanceId,
+      stage_order: instance.current_stage_order,
+      user_id: userId,
+      decision: 'rejected',
+      comment: comment || null,
+    })
+    .onConflict(['tenant_id', 'workflow_instance_id', 'stage_order', 'user_id'])
+    .merge({
+      decision: 'rejected',
+      comment: comment || null,
+      created_at: db.fn.now(),
+    });
 
   const [updated] = await db('workflow_instances')
     .where({ tenant_id: tenantId, id: instanceId })
-    .update({ status: 'rejected' })
+    .update({ status: 'rejected', stage_due_at: null })
     .returning('*');
 
   await db('stage_actions').insert({
@@ -531,12 +937,17 @@ async function rejectInstance(tenantId, userId, instanceId, comment) {
 async function resubmitInstance(tenantId, userId, instanceId) {
   const { instance, documentType } = await getInstanceDetail(tenantId, instanceId);
 
-  if (instance.status !== 'rejected') {
-    throw new AppError(400, 'Only rejected instances can be resubmitted');
+  if (instance.status !== 'rejected' && instance.status !== 'cancelled') {
+    throw new AppError(400, 'Only rejected or cancelled instances can be resubmitted');
   }
   if (instance.created_by !== userId) {
     throw new AppError(403, 'Only the original submitter can resubmit this instance');
   }
+
+  const stage1 = await db('workflow_stages')
+    .where({ tenant_id: tenantId, workflow_template_id: instance.workflow_template_id, stage_order: 1 })
+    .first();
+  const now = new Date();
 
   const [newInstance] = await db('workflow_instances')
     .insert({
@@ -547,6 +958,8 @@ async function resubmitInstance(tenantId, userId, instanceId) {
       current_stage_order: 1,
       status: 'in_progress',
       created_by: userId,
+      stage_entered_at: now,
+      stage_due_at: calculateStageDueAt(stage1, now),
     })
     .returning('*');
 
@@ -604,11 +1017,53 @@ async function reassignInstance(tenantId, adminId, instanceId, targetUserId, com
   return updated;
 }
 
+async function cancelInstance(tenantId, userId, isAdmin, instanceId, comment) {
+  const { instance, documentType } = await getInstanceDetail(tenantId, instanceId);
+
+  if (instance.status !== 'in_progress') {
+    throw new AppError(400, 'Only in-progress instances can be cancelled');
+  }
+
+  if (instance.created_by !== userId && !isAdmin) {
+    throw new AppError(403, 'Only the submitter or an admin can cancel this workflow');
+  }
+
+  const [updated] = await db('workflow_instances')
+    .where({ tenant_id: tenantId, id: instanceId })
+    .update({
+      status: 'cancelled',
+      claimed_by: null,
+      stage_due_at: null,
+      updated_at: db.fn.now(),
+    })
+    .returning('*');
+
+  await db('stage_actions').insert({
+    tenant_id: tenantId,
+    workflow_instance_id: instanceId,
+    action_type: 'cancel',
+    from_stage_order: instance.current_stage_order,
+    to_stage_order: null,
+    actor_id: userId,
+    comment: comment || null,
+  });
+
+  if (isAdmin && instance.created_by !== userId) {
+    await notifyUser(tenantId, instanceId, 'cancelled', instance.created_by, {
+      documentTypeName: documentType.name,
+      comment,
+    });
+  }
+
+  return updated;
+}
+
 module.exports = {
   getInstanceDetail,
   startInstance,
   startInstanceFromOwnDocument,
   claimInstance,
+  unclaimInstance,
   addInstanceVersion,
   addInstanceContentVersion,
   getCurrentContent,
@@ -620,4 +1075,8 @@ module.exports = {
   rejectInstance,
   resubmitInstance,
   reassignInstance,
+  cancelInstance,
+  getStageApprovals,
+  getEligibleApprovers,
+  isUserEligibleApprover,
 };

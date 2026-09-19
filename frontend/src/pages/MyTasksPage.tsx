@@ -1,18 +1,50 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getMyTasks, TaskListItem } from '../api/instances';
+import { getSlaBadgeInfo } from '../utils/sla';
 
 function TaskCard({ task }: { task: TaskListItem }) {
+  const sla = getSlaBadgeInfo(task.stage_due_at, task.is_overdue, task.status);
+
   return (
     <Link
       to={`/instances/${task.id}`}
-      className="block rounded border border-gray-200 bg-white p-4 text-sm hover:border-blue-300"
+      className="block rounded border border-gray-200 bg-white p-4 text-sm hover:border-blue-300 transition-colors"
     >
-      <div className="font-medium text-gray-900">
-        WF-{String(task.ticket_number).padStart(6, '0')} — {task.document_type_name}
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-medium text-gray-900">
+          WF-{String(task.ticket_number).padStart(6, '0')} — {task.document_type_name}
+        </div>
+        {sla && (
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs ${sla.className}`}>
+            {sla.label}
+          </span>
+        )}
       </div>
-      <div className="mt-1 text-gray-600">
-        {task.currentStage ? `Stage: ${task.currentStage.name}` : null} — status: {task.status}
+      <div className="mt-1 flex items-center justify-between text-gray-600">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span>{task.currentStage ? `Stage: ${task.currentStage.name}` : null} — status: {task.status}</span>
+          {task.currentStage?.consensus_type === 'all' && (
+            <span className="rounded bg-purple-50 px-1.5 py-0.5 text-[11px] font-semibold text-purple-700 border border-purple-200">
+              AND Consensus
+            </span>
+          )}
+          {task.currentStage?.consensus_type === 'any' && (
+            <span className="rounded bg-cyan-50 px-1.5 py-0.5 text-[11px] font-semibold text-cyan-700 border border-cyan-200">
+              OR Consensus
+            </span>
+          )}
+          {task.has_approved && (
+            <span className="rounded bg-green-50 px-1.5 py-0.5 text-[11px] font-semibold text-green-700 border border-green-200">
+              ✓ Approved
+            </span>
+          )}
+        </div>
+        {task.currentStage?.sla_hours && (
+          <span className="text-xs text-gray-400">
+            SLA target: {task.currentStage.sla_hours}h
+          </span>
+        )}
       </div>
     </Link>
   );

@@ -7,12 +7,12 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
       POSTGRES_DB: ${DB_NAME:-workflow_engine}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-workflow}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-workflow} -d ${DB_NAME:-workflow_engine}"]
       interval: 5s
       timeout: 5s
       retries: 10

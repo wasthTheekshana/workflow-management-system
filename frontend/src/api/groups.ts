@@ -10,6 +10,7 @@ export interface GroupMember {
   id: string;
   email: string;
   full_name: string | null;
+  level: number;
 }
 
 export interface AdminGroupDetail extends AdminGroup {
@@ -36,8 +37,18 @@ export function deleteGroup(id: string): Promise<void> {
   return apiFetch(`/admin/groups/${id}`, { method: 'DELETE' });
 }
 
-export function addGroupMember(id: string, userId: string): Promise<void> {
-  return apiFetch(`/admin/groups/${id}/members`, { method: 'POST', body: JSON.stringify({ user_id: userId }) });
+export function addGroupMember(id: string, userId: string, level = 1): Promise<void> {
+  return apiFetch(`/admin/groups/${id}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId, level }),
+  });
+}
+
+export function updateGroupMemberLevel(id: string, userId: string, level: number): Promise<void> {
+  return apiFetch(`/admin/groups/${id}/members/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ level }),
+  });
 }
 
 export function removeGroupMember(id: string, userId: string): Promise<void> {

@@ -40,8 +40,8 @@ async function getGroupWithMembers(tenantId, groupId) {
   const members = await db('user_groups')
     .join('users', 'users.id', 'user_groups.user_id')
     .where({ 'user_groups.tenant_id': tenantId, 'user_groups.group_id': groupId })
-    .select('users.id', 'users.email', 'users.full_name')
-    .orderBy('users.email');
+    .select('users.id', 'users.email', 'users.full_name', 'user_groups.level')
+    .orderBy(['user_groups.level', 'users.email']);
   return { ...group, members };
 }
 
@@ -122,14 +122,36 @@ async function deleteGroup(tenantId, groupId) {
   });
 }
 
-async function addMember(tenantId, groupId, userId) {
+async function addMember(tenantId, groupId, userId, level = 1) {
   await requireGroup(tenantId, groupId);
   assertUuid(userId, 'userId');
+  const memberLevel = level !== undefined && level !== null ? Number(level) : 1;
+  if (!Number.isInteger(memberLevel) || memberLevel < 1) {
+    throw new AppError(400, 'level must be a positive integer');
+  }
   const user = await db('users').where({ tenant_id: tenantId, id: userId }).first();
   if (!user) {
     throw new AppError(400, 'userId does not belong to this tenant');
   }
-  await db('user_groups').insert({ tenant_id: tenantId, user_id: userId, group_id: groupId }).onConflict(['user_id', 'group_id']).ignore();
+  await db('user_groups')
+    .insert({ tenant_id: tenantId, user_id: userId, group_id: groupId, level: memberLevel })
+    .onConflict(['user_id', 'group_id'])
+    .merge(['level']);
+}
+
+async function updateMemberLevel(tenantId, groupId, userId, level) {
+  await requireGroup(tenantId, groupId);
+  assertUuid(userId, 'userId');
+  const memberLevel = Number(level);
+  if (!Number.isInteger(memberLevel) || memberLevel < 1) {
+    throw new AppError(400, 'level must be a positive integer');
+  }
+  const updated = await db('user_groups')
+    .where({ tenant_id: tenantId, group_id: groupId, user_id: userId })
+    .update({ level: memberLevel });
+  if (!updated) {
+    throw new AppError(404, 'User is not a member of this group');
+  }
 }
 
 async function removeMember(tenantId, groupId, userId) {
@@ -145,5 +167,6 @@ module.exports = {
   renameGroup,
   deleteGroup,
   addMember,
+  updateMemberLevel,
   removeMember,
 };

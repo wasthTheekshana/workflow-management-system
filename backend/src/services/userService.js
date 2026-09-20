@@ -58,6 +58,8 @@ async function updateOwnProfile(tenantId, userId, { fullName, newPassword }) {
       throw new AppError(400, `newPassword must be at least ${MIN_PASSWORD_LENGTH} characters`);
     }
     updates.password_hash = await bcrypt.hash(newPassword, 10);
+    // Invalidate any outstanding, unused password reset tokens for this user
+    await db('password_reset_tokens').where({ tenant_id: tenantId, user_id: userId, used_at: null }).del();
   }
 
   const [user] = await db('users')

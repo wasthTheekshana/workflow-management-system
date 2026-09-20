@@ -41,4 +41,4 @@ async function createUser(tenantId, { email, password, fullName, isAdmin }) {
   }
 }
 
-module.exports = { listUsers, createUser };
+module.exports = { listUsers, createUser, MIN_PASSWORD_LENGTH };

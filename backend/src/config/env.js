@@ -31,6 +31,7 @@ function validateEnv(env = process.env) {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    frontendBaseUrl: env.FRONTEND_BASE_URL || 'http://localhost:5173',
     storageDir: env.STORAGE_DIR || './storage',
     smtp: {
       host: env.SMTP_HOST || 'localhost',

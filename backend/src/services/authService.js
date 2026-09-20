@@ -56,16 +56,19 @@ async function requestPasswordReset(email, sendMail = transporter.sendMail.bind(
   const { frontendBaseUrl } = validateEnv();
   const resetLink = `${frontendBaseUrl}/reset-password?token=${rawToken}`;
 
-  try {
-    await sendMail({
-      from: MAIL_FROM,
-      to: email,
-      subject: 'Reset your password',
-      text: `Use this link to reset your password (valid for 1 hour): ${resetLink}`,
-    });
-  } catch (err) {
+  // Fire the email send without awaiting it: awaiting a real SMTP round-trip
+  // here would make the response time (and thus this endpoint) observably
+  // different between "email exists" and "email doesn't exist", defeating
+  // the enumeration-safety goal of always responding immediately with the
+  // same generic message.
+  sendMail({
+    from: MAIL_FROM,
+    to: email,
+    subject: 'Reset your password',
+    text: `Use this link to reset your password (valid for 1 hour): ${resetLink}`,
+  }).catch((err) => {
     console.error('Failed to send password reset email:', err.message);
-  }
+  });
 }
 
 async function resetPassword(rawToken, newPassword) {

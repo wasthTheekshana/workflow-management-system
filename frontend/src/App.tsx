@@ -5,6 +5,9 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminRoute } from './components/AdminRoute';
 import { Layout } from './components/Layout';
 import { LoginPage } from './pages/LoginPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { MyTasksPage } from './pages/MyTasksPage';
 import { NewInstancePage } from './pages/NewInstancePage';
 import { InstanceDetailPage } from './pages/InstanceDetailPage';
@@ -28,9 +31,12 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
                 <Route path="/my-tasks" element={<MyTasksPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/instances/new" element={<NewInstancePage />} />
                 <Route path="/instances/:id" element={<InstanceDetailPage />} />
                 <Route element={<AdminRoute />}>

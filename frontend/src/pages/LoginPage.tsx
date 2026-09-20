@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ApiError } from '../api/client';
 
@@ -58,6 +58,9 @@ export function LoginPage() {
           {isSubmitting ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
+      <Link to="/forgot-password" className="mt-4 block text-center text-sm text-blue-700 hover:underline">
+        Forgot password?
+      </Link>
     </div>
   );
 }

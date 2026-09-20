@@ -47,6 +47,9 @@ export function Layout() {
         </div>
         <div className="flex items-center gap-3">
           <NotificationCenter />
+          <NavLink to="/profile" className={linkClass}>
+            Profile
+          </NavLink>
           <div className="h-4 w-px bg-gray-200"></div>
           <button onClick={logout} className="text-sm text-gray-600 hover:text-gray-900 font-medium">
             Sign out

@@ -27,3 +27,31 @@ export function decodeToken(token: string): DecodedToken | null {
     return null;
   }
 }
+
+export function requestPasswordReset(email: string): Promise<{ message: string }> {
+  return apiFetch('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  return apiFetch('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, newPassword }),
+  });
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  is_admin: boolean;
+}
+
+export function updateProfile(input: { fullName?: string; newPassword?: string }): Promise<UserProfile> {
+  return apiFetch('/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}

@@ -41,4 +41,31 @@ async function createUser(tenantId, { email, password, fullName, isAdmin }) {
   }
 }
 
-module.exports = { listUsers, createUser, MIN_PASSWORD_LENGTH };
+async function updateOwnProfile(tenantId, userId, { fullName, newPassword }) {
+  if (fullName === undefined && newPassword === undefined) {
+    throw new AppError(400, 'fullName or newPassword is required');
+  }
+
+  const updates = {};
+
+  if (fullName !== undefined) {
+    assertRequiredString(fullName, 'fullName');
+    updates.full_name = fullName;
+  }
+
+  if (newPassword !== undefined) {
+    if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new AppError(400, `newPassword must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    }
+    updates.password_hash = await bcrypt.hash(newPassword, 10);
+  }
+
+  const [user] = await db('users')
+    .where({ tenant_id: tenantId, id: userId })
+    .update(updates)
+    .returning(['id', 'email', 'full_name', 'is_admin']);
+
+  return user;
+}
+
+module.exports = { listUsers, createUser, updateOwnProfile, MIN_PASSWORD_LENGTH };

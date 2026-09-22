@@ -6,4 +6,4 @@ COPY . .
 RUN chown -R node:node /app
 USER node
 EXPOSE 3000
-CMD ["node", "src/server.js"]
+CMD ["sh", "-c", "npx knex migrate:latest && node scripts/seed.js && node src/server.js"]

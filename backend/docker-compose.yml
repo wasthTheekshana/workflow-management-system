@@ -22,9 +22,14 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      PORT: 3000
       DB_HOST: postgres
+      DB_PORT: 5432
+      ONLYOFFICE_CALLBACK_BASE_URL: http://api:3000
+      CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-5174}
+      FRONTEND_BASE_URL: http://localhost:${FRONTEND_PORT:-5174}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${BACKEND_PORT:-3001}:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,6 +43,18 @@ services:
       JWT_HEADER: Authorization
     ports:
       - "127.0.0.1:8082:80"
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001}
+        VITE_ONLYOFFICE_DOCUMENT_SERVER_URL: ${VITE_ONLYOFFICE_DOCUMENT_SERVER_URL:-http://localhost:8082}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-5174}:80"
+    depends_on:
+      - api
 
 volumes:
   pgdata:

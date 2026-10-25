@@ -1,6 +1,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
+const { pipeline } = require('stream/promises');
 const { validateEnv } = require('../config/env');
 const AppError = require('../utils/AppError');
 
@@ -30,6 +31,14 @@ function getS3() {
   return s3Client;
 }
 
+// Same guard the local driver gets from resolveLocalPath: keys are always
+// <tenantId>/<uuid>.<ext>, so anything with traversal or a leading slash is bogus.
+function assertSafeKey(key) {
+  if (typeof key !== 'string' || key.startsWith('/') || key.split('/').includes('..')) {
+    throw new AppError(400, 'Invalid file path');
+  }
+}
+
 function resolveLocalPath(key) {
   const resolved = path.resolve(STORAGE_ROOT, key);
   if (!resolved.startsWith(STORAGE_ROOT + path.sep)) {
@@ -57,6 +66,7 @@ async function saveUploadedFile(tenantId, buffer, extension) {
 // attachment download; without it the file is served inline (OnlyOffice fetch).
 async function sendStoredFile(res, key, downloadName) {
   if (driver === 's3') {
+    assertSafeKey(key);
     const { GetObjectCommand } = require('@aws-sdk/client-s3');
     let object;
     try {
@@ -72,7 +82,17 @@ async function sendStoredFile(res, key, downloadName) {
     if (downloadName) {
       res.attachment(downloadName);
     }
-    object.Body.pipe(res);
+    // pipeline() forwards a mid-transfer S3 error and tears down both streams;
+    // a bare .pipe() would leave it unhandled and crash the process.
+    try {
+      await pipeline(object.Body, res);
+    } catch (err) {
+      if (res.headersSent) {
+        res.destroy(err);
+        return;
+      }
+      throw err;
+    }
     return;
   }
 
@@ -89,6 +109,7 @@ async function sendStoredFile(res, key, downloadName) {
 
 async function deleteStoredFile(key) {
   if (driver === 's3') {
+    assertSafeKey(key);
     const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
     await getS3().send(new DeleteObjectCommand({ Bucket: config.storage.s3.bucket, Key: key }));
     return;

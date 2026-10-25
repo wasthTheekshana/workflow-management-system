@@ -1,12 +1,11 @@
 const express = require('express');
-const path = require('path');
 const AppError = require('../utils/AppError');
 const { verifyDownloadToken } = require('../utils/downloadToken');
-const { STORAGE_ROOT } = require('../services/fileStorageService');
+const { sendStoredFile } = require('../services/fileStorageService');
 
 const router = express.Router();
 
-router.get('/signed-download', (req, res, next) => {
+router.get('/signed-download', async (req, res, next) => {
   try {
     const { token } = req.query;
     if (!token) {
@@ -14,15 +13,9 @@ router.get('/signed-download', (req, res, next) => {
     }
     const { filePath } = verifyDownloadToken(token);
 
-    // Defense-in-depth: the token is signed by us and filePath always comes
-    // from our own DB, never user input — but a resolved-path check costs
-    // nothing and keeps this endpoint safe even if that ever changes.
-    const resolvedPath = path.resolve(STORAGE_ROOT, filePath);
-    if (!resolvedPath.startsWith(path.resolve(STORAGE_ROOT) + path.sep)) {
-      throw new AppError(400, 'Invalid file path');
-    }
-
-    res.sendFile(resolvedPath);
+    // The token is signed by us and filePath always comes from our own DB;
+    // the storage service still rejects keys that escape the storage root.
+    await sendStoredFile(res, filePath);
   } catch (err) {
     next(err);
   }

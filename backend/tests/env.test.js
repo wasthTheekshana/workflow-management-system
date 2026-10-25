@@ -31,6 +31,20 @@ describe('validateEnv', () => {
     expect(() => validateEnv(env)).toThrow('ONLYOFFICE_JWT_SECRET');
   });
 
+  it('defaults to local storage', () => {
+    expect(validateEnv(validBase).storage.driver).toBe('local');
+  });
+
+  it('throws on an unknown STORAGE_DRIVER', () => {
+    expect(() => validateEnv({ ...validBase, STORAGE_DRIVER: 'ftp' })).toThrow('STORAGE_DRIVER');
+  });
+
+  it('requires S3_BUCKET when STORAGE_DRIVER=s3', () => {
+    expect(() => validateEnv({ ...validBase, STORAGE_DRIVER: 's3' })).toThrow('S3_BUCKET');
+    const config = validateEnv({ ...validBase, STORAGE_DRIVER: 's3', S3_BUCKET: 'docs' });
+    expect(config.storage.s3.bucket).toBe('docs');
+  });
+
   it('returns a fully-populated config object for valid input', () => {
     const config = validateEnv(validBase);
     expect(config.jwtSecret).toBe(validBase.JWT_SECRET);

@@ -1,9 +1,8 @@
-const path = require('path');
-const fs = require('fs/promises');
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const { assertUuid } = require('../utils/validation');
-const { saveUploadedFile, STORAGE_ROOT } = require('./fileStorageService');
+const { assertAttachmentSignature } = require('../utils/fileValidation');
+const { saveUploadedFile, deleteStoredFile } = require('./fileStorageService');
 
 const ALLOWED_ATTACHMENT_EXTENSIONS = [
   'pdf',
@@ -75,6 +74,8 @@ async function addAttachment(tenantId, userId, instanceId, file) {
     throw new AppError(400, `File exceeds the maximum allowed size of 15MB`);
   }
 
+  assertAttachmentSignature(extension, file.buffer);
+
   const relativePath = await saveUploadedFile(tenantId, file.buffer, extension);
 
   const [attachment] = await db('instance_attachments')
@@ -118,8 +119,7 @@ async function getAttachmentFile(tenantId, instanceId, attachmentId) {
     throw new AppError(404, 'Attachment not found');
   }
 
-  const absolutePath = path.resolve(STORAGE_ROOT, attachment.file_path);
-  return { attachment, absolutePath };
+  return { attachment, storageKey: attachment.file_path };
 }
 
 async function deleteAttachment(tenantId, userId, isAdmin, instanceId, attachmentId) {
@@ -150,11 +150,10 @@ async function deleteAttachment(tenantId, userId, isAdmin, instanceId, attachmen
     .where({ tenant_id: tenantId, id: attachmentId })
     .del();
 
-  const absolutePath = path.resolve(STORAGE_ROOT, attachment.file_path);
   try {
-    await fs.unlink(absolutePath);
+    await deleteStoredFile(attachment.file_path);
   } catch {
-    // Ignore file unlink failure if already removed
+    // Ignore file delete failure if already removed
   }
 
   await db('stage_actions').insert({

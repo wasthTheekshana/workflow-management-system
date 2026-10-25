@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY . .
-RUN chown -R node:node /app
+RUN mkdir -p /app/storage && chown -R node:node /app
 USER node
 EXPOSE 3000
 CMD ["sh", "-c", "npx knex migrate:latest && node scripts/seed.js && node src/server.js"]

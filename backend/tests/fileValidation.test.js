@@ -24,3 +24,19 @@ describe('assertAllowedUpload', () => {
     expect(() => assertAllowedUpload(file, ['docx'], 1024)).toThrow('signature');
   });
 });
+
+describe('assertAttachmentSignature', () => {
+  const { assertAttachmentSignature } = require('../src/utils/fileValidation');
+
+  it('accepts matching signatures', () => {
+    expect(() => assertAttachmentSignature('pdf', Buffer.from('%PDF-1.4 x'))).not.toThrow();
+    expect(() => assertAttachmentSignature('png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0]))).not.toThrow();
+    expect(() => assertAttachmentSignature('txt', Buffer.from('hello'))).not.toThrow();
+  });
+
+  it('rejects content that does not match the extension', () => {
+    expect(() => assertAttachmentSignature('pdf', Buffer.from('MZ\x90 executable'))).toThrow(/does not match/);
+    expect(() => assertAttachmentSignature('jpg', Buffer.from('<?php'))).toThrow(/does not match/);
+    expect(() => assertAttachmentSignature('txt', Buffer.from([0x4d, 0x5a, 0x00]))).toThrow(/does not match/);
+  });
+});

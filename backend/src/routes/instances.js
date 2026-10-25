@@ -1,4 +1,6 @@
 const express = require('express');
+const path = require('path');
+const { sendStoredFile } = require('../services/fileStorageService');
 const db = require('../config/db');
 const { authenticate } = require('../middleware/auth');
 const { upload } = require('../config/multerUpload');
@@ -175,8 +177,8 @@ router.post('/:id/versions', upload.single('file'), async (req, res, next) => {
 
 router.get('/:id/current-file', async (req, res, next) => {
   try {
-    const absolutePath = await getCurrentFilePath(req.user.tenantId, req.params.id);
-    res.download(absolutePath);
+    const storageKey = await getCurrentFilePath(req.user.tenantId, req.params.id);
+    await sendStoredFile(res, storageKey, path.basename(storageKey));
   } catch (err) {
     next(err);
   }
@@ -296,12 +298,12 @@ router.post('/:id/attachments', upload.single('file'), async (req, res, next) =>
 
 router.get('/:id/attachments/:attachmentId/download', async (req, res, next) => {
   try {
-    const { attachment, absolutePath } = await getAttachmentFile(
+    const { attachment, storageKey } = await getAttachmentFile(
       req.user.tenantId,
       req.params.id,
       req.params.attachmentId,
     );
-    res.download(absolutePath, attachment.file_name);
+    await sendStoredFile(res, storageKey, attachment.file_name);
   } catch (err) {
     next(err);
   }

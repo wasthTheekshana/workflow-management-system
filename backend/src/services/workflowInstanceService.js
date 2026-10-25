@@ -1,10 +1,9 @@
-const path = require('path');
 const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const { assertUuid, assertRequiredString } = require('../utils/validation');
 const { canAct } = require('../utils/workflowAuthorization');
 const { assertAllowedUpload } = require('../utils/fileValidation');
-const { saveUploadedFile, STORAGE_ROOT } = require('./fileStorageService');
+const { saveUploadedFile } = require('./fileStorageService');
 const { notifyStage, notifyUser } = require('./notificationService');
 const { listVisibleUsers, listVisibleGroups } = require('./visibilityService');
 
@@ -619,7 +618,7 @@ async function getCurrentFileInfo(tenantId, instanceId) {
 
 async function getCurrentFilePath(tenantId, instanceId) {
   const { relativePath } = await getCurrentFileInfo(tenantId, instanceId);
-  return path.join(STORAGE_ROOT, relativePath);
+  return relativePath;
 }
 
 async function forwardInstance(tenantId, userId, instanceId, comment) {

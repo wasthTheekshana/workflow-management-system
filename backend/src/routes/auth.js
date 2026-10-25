@@ -31,8 +31,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
   } catch (err) {
     return next(err);
   }
-});
-
+})
 router.post('/forgot-password', forgotPasswordLimiter, async (req, res, next) => {
   try {
     const { email } = req.body;

@@ -15,6 +15,14 @@ function validateEnv(env = process.env) {
   if (!env.DB_PASSWORD) errors.push('DB_PASSWORD is required');
   if (!env.DB_NAME) errors.push('DB_NAME is required');
 
+  const storageDriver = env.STORAGE_DRIVER || 'local';
+  if (!['local', 's3'].includes(storageDriver)) {
+    errors.push('STORAGE_DRIVER must be "local" or "s3"');
+  }
+  if (storageDriver === 's3' && !env.S3_BUCKET) {
+    errors.push('S3_BUCKET is required when STORAGE_DRIVER=s3');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid environment configuration:\n${errors.join('\n')}`);
   }
@@ -33,6 +41,18 @@ function validateEnv(env = process.env) {
       .filter(Boolean),
     frontendBaseUrl: env.FRONTEND_BASE_URL || 'http://localhost:5173',
     storageDir: env.STORAGE_DIR || './storage',
+    storage: {
+      driver: env.STORAGE_DRIVER || 'local',
+      s3: {
+        bucket: env.S3_BUCKET || '',
+        region: env.S3_REGION || 'us-east-1',
+        // Set for MinIO or any other S3-compatible store; leave empty for AWS S3.
+        endpoint: env.S3_ENDPOINT || '',
+        accessKeyId: env.S3_ACCESS_KEY_ID || '',
+        secretAccessKey: env.S3_SECRET_ACCESS_KEY || '',
+        forcePathStyle: env.S3_FORCE_PATH_STYLE === 'true',
+      },
+    },
     smtp: {
       host: env.SMTP_HOST || 'localhost',
       port: parseInt(env.SMTP_PORT || '587', 10),

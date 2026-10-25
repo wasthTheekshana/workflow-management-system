@@ -26,6 +26,10 @@ const config = validateEnv();
 
 const app = express();
 
+// Behind the shared Nginx: trust exactly one proxy hop so req.ip (and the
+// rate limiter) see the real client, not the Nginx container.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(
   cors({

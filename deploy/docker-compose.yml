@@ -1,0 +1,140 @@
+# DOK shared server (34.93.171.14) stack for the Workflow Management System.
+# Run from: ~/workflow-stack/deploy   (the repo is cloned to ~/workflow-stack)
+#   docker compose up -d --build
+# Nginx/Certbot are the shared ones in ~/dok-stack - this stack has none.
+# Documents are stored in Cloudflare R2 (STORAGE_DRIVER=s3), so no document volume.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: workflow-db
+    restart: unless-stopped
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    command: >
+      postgres -c shared_buffers=1GB
+               -c effective_cache_size=3GB
+               -c work_mem=16MB
+               -c max_connections=100
+    volumes:
+      - /mnt/disks/data/db/workflow:/var/lib/postgresql/data
+    networks:
+      - app-net
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 4G
+          pids: 200
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ../backend
+    container_name: workflow-api
+    restart: unless-stopped
+    expose:
+      - "3000"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      STORAGE_DRIVER: s3
+      # Migrate on every start; seed only creates the admin from ADMIN_* if missing.
+      # The Dockerfile default CMD is overridden so nothing dev-only runs here.
+    command: ["sh", "-c", "npx knex migrate:latest && node scripts/seed.js && node src/server.js"]
+    networks:
+      - app-net
+      - shared-nginx
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2G
+          pids: 200
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../frontend
+      args:
+        VITE_API_BASE_URL: https://${APP_DOMAIN}/api
+        VITE_ONLYOFFICE_DOCUMENT_SERVER_URL: https://${OFFICE_DOMAIN}
+    container_name: workflow-web
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - shared-nginx
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+          pids: 100
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  onlyoffice:
+    image: onlyoffice/documentserver:${ONLYOFFICE_TAG:?ONLYOFFICE_TAG must be set in .env}
+    container_name: workflow-onlyoffice
+    restart: unless-stopped
+    expose:
+      - "80"
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET}
+      JWT_HEADER: Authorization
+      # Needed so OnlyOffice may call the api over the private app-net
+      # (workflow-api:3000). Requests are only honoured when signed with
+      # JWT_SECRET. Do NOT add ALLOW_META_IP_ADDRESS (cloud metadata endpoint).
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+    networks:
+      - app-net
+      - shared-nginx
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "3"
+          memory: 8G
+          pids: 1000
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+networks:
+  app-net:
+    name: workflow-app-net
+  shared-nginx:
+    name: shared-nginx
+    external: true
